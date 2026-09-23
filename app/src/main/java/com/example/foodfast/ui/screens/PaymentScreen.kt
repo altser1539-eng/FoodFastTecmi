@@ -15,11 +15,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import com.example.foodfast.data.User
 import com.example.foodfast.ui.viewmodel.CartViewModel
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PaymentScreen(viewModel: CartViewModel, onBack: () -> Unit, onPaymentSuccess: () -> Unit) {
+fun PaymentScreen(
+    viewModel: CartViewModel,
+    currentUser: User?,
+    onBack: () -> Unit,
+    onPaymentSuccess: () -> Unit
+) {
     var cardNumber by remember { mutableStateOf("") }
     var expiryDate by remember { mutableStateOf("") }
     var cvv by remember { mutableStateOf("") }
@@ -57,7 +64,7 @@ fun PaymentScreen(viewModel: CartViewModel, onBack: () -> Unit, onPaymentSuccess
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "Total a pagar: $${String.format("%.2f", total)}",
+                text = "Total a pagar: $${String.format(Locale.getDefault(), "%.2f", total)}",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
@@ -125,8 +132,11 @@ fun PaymentScreen(viewModel: CartViewModel, onBack: () -> Unit, onPaymentSuccess
                     if (isCardError || isExpiryError || isCvvError) {
                         Toast.makeText(context, "Corrige los errores en rojo", Toast.LENGTH_SHORT).show()
                     } else if (cardNumber.length == 16 && expiryDate.length >= 4 && cvv.length == 3) {
-                        Toast.makeText(context, "¡Pago realizado con éxito!", Toast.LENGTH_LONG).show()
-                        viewModel.clearCart()
+                        val studentUser = currentUser?.username ?: "estudiante"
+                        val studentName = currentUser?.nombreCompleto?.ifEmpty { studentUser } ?: "Estudiante"
+                        
+                        viewModel.placeOrder(studentUser, studentName)
+                        Toast.makeText(context, "¡Pago registrado! Puedes monitorear tu pedido.", Toast.LENGTH_LONG).show()
                         onPaymentSuccess()
                     } else {
                         Toast.makeText(context, "Por favor, completa los datos correctamente", Toast.LENGTH_SHORT).show()

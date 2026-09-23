@@ -30,6 +30,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.foodfast.data.FirestoreRepository
+import com.example.foodfast.data.MenuItem
+import com.example.foodfast.data.Restaurant
 import com.example.foodfast.data.User
 import com.example.foodfast.data.UserRole
 import java.util.Locale
@@ -80,7 +82,6 @@ fun AdminHomeScreen(
             },
             onFailure = {
                 isLoading = false
-                // Mantener lista local en caso de prueba sin conexión
             }
         )
     }
@@ -239,8 +240,29 @@ fun AdminHomeScreen(
                     passwordHash = password,
                     onSuccess = {
                         userList.add(newUser)
+
+                        // Si el rol es NEGOCIO, guardarlo también en la colección de restaurantes
+                        if (newUser.role == UserRole.NEGOCIO) {
+                            val newRest = Restaurant(
+                                id = newUser.identificador,
+                                name = newUser.nombreCompleto,
+                                rating = "4.5",
+                                time = "15-25 min",
+                                imageUrl = "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=500"
+                            )
+                            val initialMenu = listOf(
+                                MenuItem("Platillo del Día", "$120.00", "Especialidad de la casa")
+                            )
+                            repository.guardarRestaurante(
+                                restaurant = newRest,
+                                menu = initialMenu,
+                                onSuccess = {},
+                                onFailure = {}
+                            )
+                        }
+
                         showAddUserDialog = false
-                        Toast.makeText(context, "¡Guardado exitosamente en Firestore!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "¡Usuario y Negocio guardados en Firestore!", Toast.LENGTH_SHORT).show()
                     },
                     onFailure = { e ->
                         userList.add(newUser)
@@ -407,7 +429,12 @@ fun AddUserDialog(
                     UserRole.entries.filter { it != UserRole.ADMIN }.forEach { role ->
                         FilterChip(
                             selected = (selectedRole == role),
-                            onClick = { selectedRole = role },
+                            onClick = {
+                                selectedRole = role
+                                if (role == UserRole.ESTUDIANTE && username.isNotBlank()) {
+                                    email = "${username.trim()}@tecmilenio.mx"
+                                }
+                            },
                             label = { Text(role.displayName, fontSize = 10.sp) }
                         )
                     }
@@ -505,8 +532,13 @@ fun AddUserDialog(
 
                     OutlinedTextField(
                         value = username,
-                        onValueChange = { username = it },
-                        label = { Text("Usuario / Matrícula") },
+                        onValueChange = { newUsername ->
+                            username = newUsername
+                            if (selectedRole == UserRole.ESTUDIANTE) {
+                                email = if (newUsername.isNotBlank()) "${newUsername.trim()}@tecmilenio.mx" else ""
+                            }
+                        },
+                        label = { Text(if (selectedRole == UserRole.ESTUDIANTE) "Matrícula Estudiantil" else "Usuario / Matrícula") },
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true

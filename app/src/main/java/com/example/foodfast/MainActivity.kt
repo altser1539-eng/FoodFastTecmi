@@ -141,6 +141,7 @@ fun MainNavigation(viewModel: CartViewModel) {
             composable("payment") {
                 PaymentScreen(
                     viewModel = viewModel,
+                    currentUser = currentUser,
                     onBack = { navController.popBackStack() },
                     onPaymentSuccess = {
                         navController.popBackStack("home", inclusive = false)

@@ -2,6 +2,8 @@ package com.example.foodfast.ui.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.*
@@ -22,8 +25,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.foodfast.data.FirestoreRepository
 import com.example.foodfast.data.MenuItem
 import com.example.foodfast.data.User
+import com.example.foodfast.ui.components.QRCodeView
 import java.util.Locale
 
 enum class OrderStatus(val label: String, val containerColor: Color, val contentColor: Color) {
@@ -50,8 +55,10 @@ fun BusinessHomeScreen(
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
     var isBusinessOpen by remember { mutableStateOf(true) }
+    val repository = remember { FirestoreRepository() }
+    var selectedOrderForScan by remember { mutableStateOf<BusinessOrder?>(null) }
 
-    // Sample initial orders
+    // Pedidos iniciales de muestra
     val orders = remember {
         mutableStateListOf(
             BusinessOrder("101", "Carlos López", "Estudiante", listOf("2x Pizza Pepperoni", "1x Coca-Cola"), "$320.00", OrderStatus.PENDIENTE),
@@ -60,7 +67,27 @@ fun BusinessHomeScreen(
         )
     }
 
-    // Sample menu items for this business
+    // Escuchar pedidos de Firestore en tiempo real
+    LaunchedEffect(Unit) {
+        repository.escucharPedidos { dbOrders ->
+            if (dbOrders.isNotEmpty()) {
+                orders.clear()
+                val converted = dbOrders.map { studentOrder ->
+                    BusinessOrder(
+                        id = studentOrder.id,
+                        clientName = studentOrder.studentName.ifEmpty { studentOrder.studentUsername },
+                        clientRole = "Estudiante",
+                        items = listOf(studentOrder.itemsSummary),
+                        total = studentOrder.total,
+                        status = studentOrder.status
+                    )
+                }
+                orders.addAll(converted)
+            }
+        }
+    }
+
+    // Platillos del menú del negocio
     val menuList = remember {
         mutableStateListOf(
             MenuItem("Pizza Margarita", "$120.00", "Tomate, mozzarella y albahaca fresca."),
@@ -150,11 +177,33 @@ fun BusinessHomeScreen(
                 .background(MaterialTheme.colorScheme.background)
         ) {
             when (selectedTab) {
-                0 -> OrdersTabContent(orders = orders)
+                0 -> OrdersTabContent(
+                    orders = orders,
+                    onStatusChange = { orderId, newStatus ->
+                        repository.actualizarEstadoPedido(orderId, newStatus, {}, {})
+                    },
+                    onOpenScanQr = { order -> selectedOrderForScan = order }
+                )
                 1 -> MenuTabContent(menuList = menuList)
                 2 -> StatsTabContent(orders = orders)
             }
         }
+    }
+
+    if (selectedOrderForScan != null) {
+        BusinessScanQRDialog(
+            order = selectedOrderForScan!!,
+            onDismiss = { selectedOrderForScan = null },
+            onConfirmDelivery = {
+                val targetOrder = orders.find { it.id == selectedOrderForScan!!.id }
+                if (targetOrder != null) {
+                    targetOrder.status = OrderStatus.ENTREGADO
+                    repository.actualizarEstadoPedido(targetOrder.id, OrderStatus.ENTREGADO, {}, {})
+                }
+                selectedOrderForScan = null
+                Toast.makeText(context, "¡Código QR verificado! Pedido entregado con éxito.", Toast.LENGTH_LONG).show()
+            }
+        )
     }
 
     // Modal para agregar platillo
@@ -162,16 +211,31 @@ fun BusinessHomeScreen(
         AddDishDialog(
             onDismiss = { showAddDishDialog = false },
             onAddDish = { name, price, desc ->
-                menuList.add(MenuItem(name, "$$price", desc))
+                val newItem = MenuItem(name, "$$price", desc)
+                menuList.add(newItem)
+
+                // Guardar en Firestore
+                val restId = currentUser?.identificador?.ifEmpty { "01" } ?: "01"
+                repository.agregarPlatilloAMenu(
+                    restaurantId = restId,
+                    item = newItem,
+                    onSuccess = {},
+                    onFailure = {}
+                )
+
                 showAddDishDialog = false
-                Toast.makeText(context, "Platillo '$name' agregado al menú", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Platillo '$name' guardado en Firestore", Toast.LENGTH_SHORT).show()
             }
         )
     }
 }
 
 @Composable
-fun OrdersTabContent(orders: List<BusinessOrder>) {
+fun OrdersTabContent(
+    orders: List<BusinessOrder>,
+    onStatusChange: (String, OrderStatus) -> Unit,
+    onOpenScanQr: (BusinessOrder) -> Unit
+) {
     if (orders.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("No hay pedidos registrados.")
@@ -184,18 +248,32 @@ fun OrdersTabContent(orders: List<BusinessOrder>) {
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(orders) { order ->
-                OrderCard(order = order)
+                OrderCard(
+                    order = order,
+                    onStatusChange = onStatusChange,
+                    onOpenScanQr = { onOpenScanQr(order) }
+                )
             }
         }
     }
 }
 
 @Composable
-fun OrderCard(order: BusinessOrder) {
+fun OrderCard(
+    order: BusinessOrder,
+    onStatusChange: (String, OrderStatus) -> Unit,
+    onOpenScanQr: () -> Unit
+) {
     var currentStatus by remember { mutableStateOf(order.status) }
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                if (currentStatus == OrderStatus.LISTO) {
+                    onOpenScanQr()
+                }
+            },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
@@ -270,6 +348,7 @@ fun OrderCard(order: BusinessOrder) {
                             onClick = {
                                 currentStatus = OrderStatus.EN_PREPARACION
                                 order.status = OrderStatus.EN_PREPARACION
+                                onStatusChange(order.id, OrderStatus.EN_PREPARACION)
                             },
                             shape = RoundedCornerShape(8.dp)
                         ) {
@@ -281,6 +360,7 @@ fun OrderCard(order: BusinessOrder) {
                             onClick = {
                                 currentStatus = OrderStatus.LISTO
                                 order.status = OrderStatus.LISTO
+                                onStatusChange(order.id, OrderStatus.LISTO)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                             shape = RoundedCornerShape(8.dp)
@@ -289,16 +369,14 @@ fun OrderCard(order: BusinessOrder) {
                         }
                     }
                     OrderStatus.LISTO -> {
-                        OutlinedButton(
-                            onClick = {
-                                currentStatus = OrderStatus.ENTREGADO
-                                order.status = OrderStatus.ENTREGADO
-                            },
+                        Button(
+                            onClick = onOpenScanQr,
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                             shape = RoundedCornerShape(8.dp)
                         ) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Entregado")
+                            Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Escanear QR para Entregar")
                         }
                     }
                     OrderStatus.ENTREGADO -> {
@@ -312,6 +390,76 @@ fun OrderCard(order: BusinessOrder) {
             }
         }
     }
+}
+
+@Composable
+fun BusinessScanQRDialog(
+    order: BusinessOrder,
+    onDismiss: () -> Unit,
+    onConfirmDelivery: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Escanear Código QR", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+                Text("Pedido #${order.id} - ${order.clientName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+        },
+        text = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    text = "Apunta la cámara al código QR mostrado en el teléfono del cliente para confirmar la entrega.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+
+                // Visual Scanner Frame / Camera Viewfinder
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .size(200.dp)
+                        .background(Color.Black.copy(alpha = 0.9f), RoundedCornerShape(16.dp))
+                        .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.QrCodeScanner,
+                            contentDescription = "Escáner QR",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(64.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Escaneando...", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                QRCodeView(data = "FOODFAST:${order.id}", sizeDp = 90)
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirmDelivery,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+            ) {
+                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Validar QR y Entregar Pedido", fontWeight = FontWeight.Bold)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
+                Text("Cancelar")
+            }
+        }
+    )
 }
 
 @Composable
@@ -466,7 +614,7 @@ fun AddDishDialog(
                 OutlinedTextField(
                     value = price,
                     onValueChange = { price = it },
-                    label = { Text("Precio (ej: 12.50)") },
+                    label = { Text("Precio (ej: 120.00)") },
                     singleLine = true
                 )
                 OutlinedTextField(
