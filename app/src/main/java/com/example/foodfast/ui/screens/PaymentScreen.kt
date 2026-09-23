@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,6 +31,7 @@ fun PaymentScreen(
     var cardNumber by remember { mutableStateOf("") }
     var expiryDate by remember { mutableStateOf("") }
     var cvv by remember { mutableStateOf("") }
+    var showSaveCardDialog by remember { mutableStateOf(false) }
     
     // Error States
     val isCardError = cardNumber.isNotEmpty() && !cardNumber.all { it.isDigit() }
@@ -38,6 +40,22 @@ fun PaymentScreen(
 
     val context = LocalContext.current
     val total = viewModel.getTotal()
+
+    val processPayment: (saveCard: Boolean) -> Unit = { saveCard ->
+        val studentUser = currentUser?.username ?: "estudiante"
+        val studentName = currentUser?.nombreCompleto?.ifEmpty { studentUser } ?: "Estudiante"
+        
+        viewModel.placeOrder(studentUser, studentName)
+        
+        if (saveCard) {
+            Toast.makeText(context, "Tarjeta guardada y pago realizado con éxito", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(context, "¡Pago registrado! Puedes monitorear tu pedido.", Toast.LENGTH_LONG).show()
+        }
+        
+        showSaveCardDialog = false
+        onPaymentSuccess()
+    }
 
     Scaffold(
         topBar = {
@@ -76,6 +94,7 @@ fun PaymentScreen(
                 value = cardNumber,
                 onValueChange = { if (it.length <= 16) cardNumber = it },
                 label = { Text("Número de Tarjeta (16 dígitos)") },
+                leadingIcon = { Icon(Icons.Default.CreditCard, contentDescription = null) },
                 modifier = Modifier.fillMaxWidth(),
                 isError = isCardError,
                 supportingText = {
@@ -132,12 +151,7 @@ fun PaymentScreen(
                     if (isCardError || isExpiryError || isCvvError) {
                         Toast.makeText(context, "Corrige los errores en rojo", Toast.LENGTH_SHORT).show()
                     } else if (cardNumber.length == 16 && expiryDate.length >= 4 && cvv.length == 3) {
-                        val studentUser = currentUser?.username ?: "estudiante"
-                        val studentName = currentUser?.nombreCompleto?.ifEmpty { studentUser } ?: "Estudiante"
-                        
-                        viewModel.placeOrder(studentUser, studentName)
-                        Toast.makeText(context, "¡Pago registrado! Puedes monitorear tu pedido.", Toast.LENGTH_LONG).show()
-                        onPaymentSuccess()
+                        showSaveCardDialog = true
                     } else {
                         Toast.makeText(context, "Por favor, completa los datos correctamente", Toast.LENGTH_SHORT).show()
                     }
@@ -151,5 +165,31 @@ fun PaymentScreen(
                 Text("Pagar Ahora", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
             }
         }
+    }
+
+    if (showSaveCardDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveCardDialog = false },
+            title = {
+                Text("Guardar Tarjeta", fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Text("¿Deseas guardar la información de esta tarjeta para futuras compras?")
+            },
+            confirmButton = {
+                Button(
+                    onClick = { processPayment(true) }
+                ) {
+                    Text("Guardar")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { processPayment(false) }
+                ) {
+                    Text("No guardar")
+                }
+            }
+        )
     }
 }
