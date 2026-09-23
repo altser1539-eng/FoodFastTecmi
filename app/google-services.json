@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "654017897797",
+    "project_id": "foodfast-44884",
+    "storage_bucket": "foodfast-44884.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:654017897797:android:2395c1b3abaa6649de4a2c",
+        "android_client_info": {
+          "package_name": "com.example.foodfast"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCozzz1g1HG9UFI25Ze5lJk7v11gaW2FJs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
