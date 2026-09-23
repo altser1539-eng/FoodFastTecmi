@@ -24,6 +24,11 @@ fun PaymentScreen(viewModel: CartViewModel, onBack: () -> Unit, onPaymentSuccess
     var expiryDate by remember { mutableStateOf("") }
     var cvv by remember { mutableStateOf("") }
     
+    // Error States
+    val isCardError = cardNumber.isNotEmpty() && !cardNumber.all { it.isDigit() }
+    val isExpiryError = expiryDate.isNotEmpty() && !expiryDate.all { it.isDigit() || it == '/' }
+    val isCvvError = cvv.isNotEmpty() && !cvv.all { it.isDigit() }
+
     val context = LocalContext.current
     val total = viewModel.getTotal()
 
@@ -65,6 +70,12 @@ fun PaymentScreen(viewModel: CartViewModel, onBack: () -> Unit, onPaymentSuccess
                 onValueChange = { if (it.length <= 16) cardNumber = it },
                 label = { Text("Número de Tarjeta (16 dígitos)") },
                 modifier = Modifier.fillMaxWidth(),
+                isError = isCardError,
+                supportingText = {
+                    if (isCardError) {
+                        Text("Solo se permiten números", color = MaterialTheme.colorScheme.error)
+                    }
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 shape = RoundedCornerShape(12.dp)
             )
@@ -77,6 +88,12 @@ fun PaymentScreen(viewModel: CartViewModel, onBack: () -> Unit, onPaymentSuccess
                     onValueChange = { if (it.length <= 5) expiryDate = it },
                     label = { Text("MM/AA") },
                     modifier = Modifier.weight(1f),
+                    isError = isExpiryError,
+                    supportingText = {
+                        if (isExpiryError) {
+                            Text("Formato inválido", color = MaterialTheme.colorScheme.error)
+                        }
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     shape = RoundedCornerShape(12.dp),
                     placeholder = { Text("08/26") }
@@ -89,6 +106,12 @@ fun PaymentScreen(viewModel: CartViewModel, onBack: () -> Unit, onPaymentSuccess
                     onValueChange = { if (it.length <= 3) cvv = it },
                     label = { Text("CVV") },
                     modifier = Modifier.weight(1f),
+                    isError = isCvvError,
+                    supportingText = {
+                        if (isCvvError) {
+                            Text("Solo números", color = MaterialTheme.colorScheme.error)
+                        }
+                    },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     visualTransformation = PasswordVisualTransformation(),
                     shape = RoundedCornerShape(12.dp)
@@ -99,7 +122,9 @@ fun PaymentScreen(viewModel: CartViewModel, onBack: () -> Unit, onPaymentSuccess
 
             Button(
                 onClick = {
-                    if (cardNumber.length == 16 && expiryDate.length >= 4 && cvv.length == 3) {
+                    if (isCardError || isExpiryError || isCvvError) {
+                        Toast.makeText(context, "Corrige los errores en rojo", Toast.LENGTH_SHORT).show()
+                    } else if (cardNumber.length == 16 && expiryDate.length >= 4 && cvv.length == 3) {
                         Toast.makeText(context, "¡Pago realizado con éxito!", Toast.LENGTH_LONG).show()
                         viewModel.clearCart()
                         onPaymentSuccess()
@@ -110,6 +135,7 @@ fun PaymentScreen(viewModel: CartViewModel, onBack: () -> Unit, onPaymentSuccess
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp),
+                enabled = !isCardError && !isExpiryError && !isCvvError,
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Text("Pagar Ahora", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)

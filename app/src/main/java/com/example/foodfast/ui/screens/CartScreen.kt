@@ -17,7 +17,7 @@ import com.example.foodfast.ui.viewmodel.CartViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CartScreen(viewModel: CartViewModel, onBack: () -> Unit) {
+fun CartScreen(viewModel: CartViewModel, onBack: () -> Unit, onCheckout: () -> Unit) {
     val items = viewModel.cartItems.values.toList()
     val total = viewModel.getTotal()
 
@@ -71,7 +71,7 @@ fun CartScreen(viewModel: CartViewModel, onBack: () -> Unit) {
                     }
                 }
 
-                Divider(modifier = Modifier.padding(vertical = 16.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -94,7 +94,7 @@ fun CartScreen(viewModel: CartViewModel, onBack: () -> Unit) {
                 Spacer(modifier = Modifier.height(16.dp))
 
                 Button(
-                    onClick = { /* Checkout TODO */ },
+                    onClick = onCheckout,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)

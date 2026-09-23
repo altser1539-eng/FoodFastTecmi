@@ -2,10 +2,13 @@ package com.example.foodfast.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val OrangePrimary = Color(0xFFFF5722)
-val OrangeSecondary = Color(0xFFFF9800)
-val OrangeTertiary = Color(0xFFFFC107)
+val GreenPrimary = Color(0xFF4CAF50)
+val GreenSecondary = Color(0xFF81C784)
+val GreenTertiary = Color(0xFFAED581)
 
-val OrangePrimaryDark = Color(0xFFBF360C)
-val OrangeSecondaryDark = Color(0xFFE65100)
-val OrangeTertiaryDark = Color(0xFFFF8F00)
+val GreenPrimaryDark = Color(0xFF388E3C)
+val GreenSecondaryDark = Color(0xFF66BB6A)
+val GreenTertiaryDark = Color(0xFF9CCC65)
+
+val LightGreenBackground = Color(0xFFF1F8E9)
+val LightGreenSurface = Color(0xFFFFFFFF)
