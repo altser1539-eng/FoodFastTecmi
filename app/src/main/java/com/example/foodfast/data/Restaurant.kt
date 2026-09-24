@@ -12,7 +12,9 @@ data class Restaurant(
 data class MenuItem(
     val name: String,
     val price: String,
-    val description: String
+    val description: String,
+    val time: String = "",
+    val isAvailable: Boolean = true
 )
 
 data class SearchResult(

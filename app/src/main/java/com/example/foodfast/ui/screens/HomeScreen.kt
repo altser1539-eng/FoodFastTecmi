@@ -49,7 +49,11 @@ fun HomeScreen(
     var query by remember { mutableStateOf("") }
     var selectedOrderForQr by remember { mutableStateOf<StudentOrder?>(null) }
 
-    val openRestaurants = viewModel.restaurantsList.filter { it.isOpen }
+    val sortedRestaurants = remember(viewModel.restaurantsList) {
+        viewModel.restaurantsList.sortedByDescending { it.isOpen }
+    }
+    
+    val openRestaurants = sortedRestaurants.filter { it.isOpen }
 
     val searchResults = remember(query, viewModel.menusMap.size, viewModel.restaurantsList.size) {
         if (query.isEmpty()) emptyList<SearchResult>()
@@ -164,7 +168,7 @@ fun HomeScreen(
                     query = query,
                     onQueryChange = { query = it },
                     searchResults = searchResults,
-                    restaurants = openRestaurants,
+                    restaurants = sortedRestaurants,
                     onRestaurantClick = onRestaurantClick
                 )
                 1 -> ActiveOrderMonitoringTab(
@@ -753,19 +757,41 @@ fun RestaurantCard(restaurant: Restaurant, onClick: (String) -> Unit) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick(restaurant.id) },
+            .clickable(enabled = restaurant.isOpen) { onClick(restaurant.id) },
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column {
-            AsyncImage(
-                model = restaurant.imageUrl,
-                contentDescription = restaurant.name,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(150.dp),
-                contentScale = ContentScale.Crop
-            )
+        Column(
+            modifier = if (!restaurant.isOpen) Modifier.background(Color.Gray.copy(alpha = 0.5f)) else Modifier
+        ) {
+            Box {
+                AsyncImage(
+                    model = restaurant.imageUrl,
+                    contentDescription = restaurant.name,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp),
+                    contentScale = ContentScale.Crop,
+                    colorFilter = if (!restaurant.isOpen) androidx.compose.ui.graphics.ColorFilter.tint(Color.Gray, blendMode = androidx.compose.ui.graphics.BlendMode.Saturation) else null
+                )
+                if (!restaurant.isOpen) {
+                    Surface(
+                        color = Color(0xFFC62828),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .padding(12.dp)
+                            .align(Alignment.TopEnd)
+                    ) {
+                        Text(
+                            text = "CERRADO",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
