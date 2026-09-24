@@ -1,5 +1,4 @@
-package com.example.foodfast.ui.screens
-
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -26,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,16 +49,19 @@ fun HomeScreen(
     var query by remember { mutableStateOf("") }
     var selectedOrderForQr by remember { mutableStateOf<StudentOrder?>(null) }
 
-    val openRestaurants = viewModel.restaurantsList.filter { it.isOpen }
+    val sortedRestaurants = remember(viewModel.restaurantsList.toList()) {
+        viewModel.restaurantsList.sortedWith(compareByDescending<Restaurant> { it.isOpen }.thenBy { it.name })
+    }
 
     val searchResults = remember(query, viewModel.menusMap.size, viewModel.restaurantsList.size) {
         if (query.isEmpty()) emptyList<SearchResult>()
         else {
             val results = mutableListOf<SearchResult>()
+            val openRestaurants = viewModel.restaurantsList.filter { it.isOpen }
             viewModel.menusMap.forEach { (restaurantId, menu) ->
                 val restaurant = openRestaurants.find { it.id == restaurantId }
                 if (restaurant != null) {
-                    menu.filter { it.name.contains(query, ignoreCase = true) || it.description.contains(query, ignoreCase = true) }
+                    menu.filter { it.isAvailable && (it.name.contains(query, ignoreCase = true) || it.description.contains(query, ignoreCase = true)) }
                         .forEach { item ->
                             results.add(SearchResult(restaurantId, restaurant.name, item))
                         }
@@ -164,7 +167,7 @@ fun HomeScreen(
                     query = query,
                     onQueryChange = { query = it },
                     searchResults = searchResults,
-                    restaurants = openRestaurants,
+                    restaurants = sortedRestaurants,
                     onRestaurantClick = onRestaurantClick
                 )
                 1 -> ActiveOrderMonitoringTab(
@@ -699,6 +702,12 @@ fun SearchResultItem(result: SearchResult, onClick: () -> Unit) {
                     maxLines = 1,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
                 )
+                Text(
+                    text = "Tiempo de prep: ${result.menuItem.time}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
             Text(
                 text = result.menuItem.price,
@@ -750,22 +759,56 @@ fun RestaurantList(
 
 @Composable
 fun RestaurantCard(restaurant: Restaurant, onClick: (String) -> Unit) {
+    val context = LocalContext.current
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick(restaurant.id) },
+            .clickable {
+                if (restaurant.isOpen) {
+                    onClick(restaurant.id)
+                } else {
+                    Toast.makeText(context, "Este negocio se encuentra cerrado en este momento. Intenta más tarde.", Toast.LENGTH_SHORT).show()
+                }
+            },
         shape = RoundedCornerShape(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        colors = CardDefaults.cardColors(
+            containerColor = if (restaurant.isOpen) 
+                MaterialTheme.colorScheme.surface 
+            else 
+                Color(0xFFE0E0E0)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (restaurant.isOpen) 2.dp else 0.dp)
     ) {
         Column {
-            AsyncImage(
-                model = restaurant.imageUrl,
-                contentDescription = restaurant.name,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(150.dp),
-                contentScale = ContentScale.Crop
-            )
+            Box {
+                AsyncImage(
+                    model = restaurant.imageUrl,
+                    contentDescription = restaurant.name,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(150.dp),
+                    contentScale = ContentScale.Crop,
+                    alpha = if (restaurant.isOpen) 1.0f else 0.4f
+                )
+                if (!restaurant.isOpen) {
+                    Surface(
+                        color = Color(0xFF616161),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .padding(12.dp)
+                            .align(Alignment.TopEnd)
+                    ) {
+                        Text(
+                            text = "CERRADO",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+            }
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -775,20 +818,22 @@ fun RestaurantCard(restaurant: Restaurant, onClick: (String) -> Unit) {
                     Text(
                         text = restaurant.name,
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = if (restaurant.isOpen) MaterialTheme.colorScheme.onSurface else Color.Gray
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.Star,
                             contentDescription = "Calificación",
-                            tint = Color(0xFFFFB300),
+                            tint = if (restaurant.isOpen) Color(0xFFFFB300) else Color.Gray,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(4.dp))
                         Text(
                             text = restaurant.rating,
                             style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold
+                            fontWeight = FontWeight.Bold,
+                            color = if (restaurant.isOpen) MaterialTheme.colorScheme.onSurface else Color.Gray
                         )
                     }
                 }
@@ -798,13 +843,13 @@ fun RestaurantCard(restaurant: Restaurant, onClick: (String) -> Unit) {
                         Icons.Default.Restaurant,
                         contentDescription = "Tiempo",
                         modifier = Modifier.size(16.dp),
-                        tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        tint = if (restaurant.isOpen) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else Color.Gray
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = restaurant.time,
+                        text = if (restaurant.isOpen) restaurant.time else "Cerrado temporalmente",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        color = if (restaurant.isOpen) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else Color.Gray
                     )
                 }
             }

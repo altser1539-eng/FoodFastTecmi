@@ -266,16 +266,25 @@ fun BusinessHomeScreen(
                     },
                     onOpenScanQr = { order -> selectedOrderForScan = order }
                 )
-                1 -> MenuTabContent(menuList = menuList)
+                1 -> MenuTabContent(
+                    menuList = menuList,
+                    onToggleDishAvailability = { dishName, newIsAvailable ->
+                        val targetRestId = matchedRestaurantId.ifEmpty { businessId }
+                        repository.actualizarEstadoPlatillo(
+                            restaurantId = targetRestId,
+                            restaurantName = businessName,
+                            dishName = dishName,
+                            isAvailable = newIsAvailable
+                        )
+                    }
+                )
                 2 -> StatsTabContent(orders = orders)
                 3 -> BusinessSettingsTabContent(
                     currentName = businessNameState,
-                    currentTime = timeState,
                     currentImageUrl = imageUrlState,
                     isOpen = isBusinessOpen,
-                    onSaveSettings = { newName, newTime, newImageUrl, newIsOpen ->
+                    onSaveSettings = { newName, newImageUrl, newIsOpen ->
                         businessNameState = newName
-                        timeState = newTime
                         imageUrlState = newImageUrl
                         isBusinessOpen = newIsOpen
 
@@ -284,7 +293,7 @@ fun BusinessHomeScreen(
                             restaurantId = targetRestId,
                             restaurantName = businessName,
                             newName = newName,
-                            newTime = newTime,
+                            newTime = timeState,
                             newImageUrl = newImageUrl,
                             isOpen = newIsOpen,
                             onSuccess = {
@@ -320,8 +329,8 @@ fun BusinessHomeScreen(
     if (showAddDishDialog) {
         AddDishDialog(
             onDismiss = { showAddDishDialog = false },
-            onAddDish = { name, formattedPrice, desc ->
-                val newItem = MenuItem(name, formattedPrice, desc)
+            onAddDish = { name, formattedPrice, desc, dishTime ->
+                val newItem = MenuItem(name, formattedPrice, desc, dishTime, isAvailable = true)
                 val targetRestId = matchedRestaurantId.ifEmpty { businessId }
 
                 // Guardar en Firestore (se refrescará en tiempo real vía SnapshotListener)
@@ -654,7 +663,10 @@ fun BusinessScanQRDialog(
 }
 
 @Composable
-fun MenuTabContent(menuList: List<MenuItem>) {
+fun MenuTabContent(
+    menuList: List<MenuItem>,
+    onToggleDishAvailability: (dishName: String, isAvailable: Boolean) -> Unit
+) {
     if (menuList.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
@@ -664,18 +676,28 @@ fun MenuTabContent(menuList: List<MenuItem>) {
             )
         }
     } else {
+        val sortedMenuList = remember(menuList.toList()) {
+            menuList.sortedWith(compareByDescending<MenuItem> { it.isAvailable }.thenBy { it.name })
+        }
+
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(menuList) { item ->
-                var isAvailable by remember { mutableStateOf(true) }
+            items(sortedMenuList) { item ->
+                var isAvailable by remember(item.isAvailable) { mutableStateOf(item.isAvailable) }
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isAvailable) 
+                            MaterialTheme.colorScheme.surface 
+                        else 
+                            Color(0xFFEEEEEE)
+                    )
                 ) {
                     Row(
                         modifier = Modifier
@@ -685,20 +707,48 @@ fun MenuTabContent(menuList: List<MenuItem>) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = item.name,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = item.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isAvailable) MaterialTheme.colorScheme.onSurface else Color.Gray
+                                )
+                                if (!isAvailable) {
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Surface(
+                                        color = Color(0xFFD32F2F),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "AGOTADO",
+                                            color = Color.White,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+
                             Text(
                                 text = item.description,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                                color = if (isAvailable) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f) else Color.Gray
                             )
+
+                            Text(
+                                text = "Tiempo de preparación: ${item.time}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isAvailable) MaterialTheme.colorScheme.primary else Color.Gray,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+
                             Text(
                                 text = item.price,
                                 style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
+                                color = if (isAvailable) MaterialTheme.colorScheme.primary else Color.Gray,
                                 fontWeight = FontWeight.Bold,
                                 modifier = Modifier.padding(top = 4.dp)
                             )
@@ -708,11 +758,15 @@ fun MenuTabContent(menuList: List<MenuItem>) {
                             Text(
                                 text = if (isAvailable) "Disponible" else "Agotado",
                                 style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
                                 color = if (isAvailable) Color(0xFF2E7D32) else Color.Red
                             )
                             Switch(
                                 checked = isAvailable,
-                                onCheckedChange = { isAvailable = it }
+                                onCheckedChange = { newState ->
+                                    isAvailable = newState
+                                    onToggleDishAvailability(item.name, newState)
+                                }
                             )
                         }
                     }
@@ -795,11 +849,12 @@ fun StatsTabContent(orders: List<BusinessOrder>) {
 @Composable
 fun AddDishDialog(
     onDismiss: () -> Unit,
-    onAddDish: (name: String, price: String, description: String) -> Unit
+    onAddDish: (name: String, price: String, description: String, time: String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var time by remember { mutableStateOf("15-20 min") }
     val context = LocalContext.current
 
     AlertDialog(
@@ -826,6 +881,13 @@ fun AddDishDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
+                    value = time,
+                    onValueChange = { time = it },
+                    label = { Text("Tiempo de Preparación (ej: 15-20 min)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
                     label = { Text("Descripción") },
@@ -846,7 +908,8 @@ fun AddDishDialog(
                         Toast.makeText(context, "Ingresa un precio válido (ej: 120.00)", Toast.LENGTH_SHORT).show()
                     } else {
                         val formattedPrice = "$${String.format(Locale.getDefault(), "%.2f", numericPrice)}"
-                        onAddDish(cleanName, formattedPrice, description.trim())
+                        val cleanTime = time.trim().ifEmpty { "15-20 min" }
+                        onAddDish(cleanName, formattedPrice, description.trim(), cleanTime)
                     }
                 }
             ) {
@@ -864,13 +927,11 @@ fun AddDishDialog(
 @Composable
 fun BusinessSettingsTabContent(
     currentName: String,
-    currentTime: String,
     currentImageUrl: String,
     isOpen: Boolean,
-    onSaveSettings: (newName: String, newTime: String, newImageUrl: String, isOpen: Boolean) -> Unit
+    onSaveSettings: (newName: String, newImageUrl: String, isOpen: Boolean) -> Unit
 ) {
     var name by remember(currentName) { mutableStateOf(currentName) }
-    var time by remember(currentTime) { mutableStateOf(currentTime) }
     var imageUrl by remember(currentImageUrl) { mutableStateOf(currentImageUrl) }
     var isBusinessOpen by remember(isOpen) { mutableStateOf(isOpen) }
 
@@ -933,15 +994,6 @@ fun BusinessSettingsTabContent(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                        Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "Horario / Preparación: ${time.ifEmpty { "15-25 min" }}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
                 }
             }
         }
@@ -965,7 +1017,7 @@ fun BusinessSettingsTabContent(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = if (isBusinessOpen) "El local es visible y recibe pedidos de alumnos" else "El local está oculto para los alumnos y no recibe pedidos",
+                        text = if (isBusinessOpen) "El local es visible y recibe pedidos de alumnos" else "El local se muestra cerrado en gris en la parte inferior para los alumnos",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -989,17 +1041,6 @@ fun BusinessSettingsTabContent(
         )
 
         OutlinedTextField(
-            value = time,
-            onValueChange = { time = it },
-            label = { Text("Horario de Atención / Tiempo estimado") },
-            placeholder = { Text("Ej: 15-25 min  o  8:00 AM - 6:00 PM") },
-            leadingIcon = { Icon(Icons.Default.Schedule, contentDescription = null) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        )
-
-        OutlinedTextField(
             value = imageUrl,
             onValueChange = { imageUrl = it },
             label = { Text("URL de la Imagen de Portada / Logo") },
@@ -1012,7 +1053,7 @@ fun BusinessSettingsTabContent(
 
         Button(
             onClick = {
-                onSaveSettings(name.trim(), time.trim(), imageUrl.trim(), isBusinessOpen)
+                onSaveSettings(name.trim(), imageUrl.trim(), isBusinessOpen)
             },
             modifier = Modifier
                 .fillMaxWidth()

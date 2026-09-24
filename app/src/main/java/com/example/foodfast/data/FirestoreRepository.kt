@@ -166,7 +166,9 @@ class FirestoreRepository {
                         MenuItem(
                             name = map["name"] as? String ?: "",
                             price = map["price"] as? String ?: "$0.00",
-                            description = map["description"] as? String ?: ""
+                            description = map["description"] as? String ?: "",
+                            time = map["time"] as? String ?: "15-20 min",
+                            isAvailable = map["isAvailable"] as? Boolean ?: true
                         )
                     }
                     mapaMenus[id] = items
@@ -206,7 +208,9 @@ class FirestoreRepository {
                         MenuItem(
                             name = map["name"] as? String ?: "",
                             price = map["price"] as? String ?: "$0.00",
-                            description = map["description"] as? String ?: ""
+                            description = map["description"] as? String ?: "",
+                            time = map["time"] as? String ?: "15-20 min",
+                            isAvailable = map["isAvailable"] as? Boolean ?: true
                         )
                     }
                     mapaMenus[id] = items
@@ -290,6 +294,46 @@ class FirestoreRepository {
             .addOnFailureListener { e -> onFailure(e) }
     }
 
+    fun actualizarEstadoPlatillo(
+        restaurantId: String,
+        restaurantName: String = "",
+        dishName: String,
+        isAvailable: Boolean,
+        onSuccess: () -> Unit = {},
+        onFailure: (Exception) -> Unit = {}
+    ) {
+        db.collection("restaurants").get()
+            .addOnSuccessListener { snapshot ->
+                val matchingDoc = snapshot.documents.find { doc ->
+                    val docId = doc.id
+                    val fieldId = doc.getString("id") ?: ""
+                    val name = doc.getString("name") ?: ""
+
+                    docId.equals(restaurantId, ignoreCase = true) ||
+                    fieldId.equals(restaurantId, ignoreCase = true) ||
+                    (restaurantName.isNotBlank() && (
+                        name.equals(restaurantName, ignoreCase = true) ||
+                        name.contains(restaurantName, ignoreCase = true) ||
+                        restaurantName.contains(name, ignoreCase = true)
+                    ))
+                }
+
+                if (matchingDoc != null) {
+                    val rawMenu = (matchingDoc.get("menu") as? List<Map<String, Any>>)?.toMutableList() ?: mutableListOf()
+                    val updatedMenu = rawMenu.map { map ->
+                        val mName = map["name"] as? String ?: ""
+                        if (mName.equals(dishName, ignoreCase = true)) {
+                            map.toMutableMap().apply { put("isAvailable", isAvailable) }
+                        } else map
+                    }
+                    matchingDoc.reference.update("menu", updatedMenu)
+                        .addOnSuccessListener { onSuccess() }
+                        .addOnFailureListener { e -> onFailure(e) }
+                }
+            }
+            .addOnFailureListener { e -> onFailure(e) }
+    }
+
     fun agregarPlatilloAMenu(
         restaurantId: String,
         restaurantName: String = "",
@@ -320,7 +364,9 @@ class FirestoreRepository {
                     val newItemMap = mapOf(
                         "name" to item.name,
                         "price" to item.price,
-                        "description" to item.description
+                        "description" to item.description,
+                        "time" to item.time,
+                        "isAvailable" to item.isAvailable
                     )
                     rawMenu.add(newItemMap)
 
@@ -340,7 +386,9 @@ class FirestoreRepository {
                         mapOf(
                             "name" to item.name,
                             "price" to item.price,
-                            "description" to item.description
+                            "description" to item.description,
+                            "time" to item.time,
+                            "isAvailable" to item.isAvailable
                         )
                     )
                     val data = mapOf(
