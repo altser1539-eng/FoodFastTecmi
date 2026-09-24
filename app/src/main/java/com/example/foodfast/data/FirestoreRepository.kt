@@ -168,6 +168,7 @@ class FirestoreRepository {
                         )
                     }
                     mapaMenus[id] = items
+                    mapaMenus[doc.id] = items
                 }
 
                 onSuccess(listaRestaurantes, mapaMenus)
@@ -204,6 +205,7 @@ class FirestoreRepository {
                         )
                     }
                     mapaMenus[id] = items
+                    mapaMenus[doc.id] = items
                 }
 
                 onDataChanged(listaRestaurantes, mapaMenus)

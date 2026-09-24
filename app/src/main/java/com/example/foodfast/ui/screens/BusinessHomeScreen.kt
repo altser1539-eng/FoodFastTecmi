@@ -26,11 +26,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.example.foodfast.data.FirestoreRepository
 import com.example.foodfast.data.MenuItem
 import com.example.foodfast.data.User
-import com.example.foodfast.ui.components.QRCodeView
 import java.util.Locale
 
 enum class OrderStatus(val label: String, val containerColor: Color, val contentColor: Color) {
@@ -110,14 +108,31 @@ fun BusinessHomeScreen(
         }
     }
 
+    var matchedRestaurantId by remember { mutableStateOf("") }
+
     // Escuchar menú del negocio desde Firestore en tiempo real
-    LaunchedEffect(businessId) {
-        repository.escucharRestaurantesYMenus { _, dbMenus ->
-            val myMenu = dbMenus[businessId]
-            menuList.clear()
-            if (!myMenu.isNullOrEmpty()) {
-                menuList.addAll(myMenu)
+    LaunchedEffect(businessId, currentUser) {
+        repository.escucharRestaurantesYMenus { dbRestaurants, dbMenus ->
+            val matchedRest = dbRestaurants.find { rest ->
+                rest.id.equals(businessId, ignoreCase = true) ||
+                rest.id.equals(currentUser?.identificador, ignoreCase = true) ||
+                rest.name.equals(businessName, ignoreCase = true) ||
+                rest.name.contains(businessName, ignoreCase = true) ||
+                businessName.contains(rest.name, ignoreCase = true) ||
+                (rest.id == "01" && (businessId == "NEG-01" || businessName.contains("Cocas", ignoreCase = true)))
             }
+
+            val targetRestId = matchedRest?.id ?: currentUser?.identificador?.ifEmpty { businessId } ?: businessId
+            matchedRestaurantId = targetRestId
+
+            val myMenu = dbMenus[targetRestId]
+                ?: dbMenus[businessId]
+                ?: dbMenus[currentUser?.identificador]
+                ?: dbMenus[currentUser?.username]
+                ?: emptyList()
+
+            menuList.clear()
+            menuList.addAll(myMenu)
         }
     }
 
@@ -242,16 +257,17 @@ fun BusinessHomeScreen(
             onDismiss = { showAddDishDialog = false },
             onAddDish = { name, price, desc ->
                 val newItem = MenuItem(name, "$$price", desc)
+                val targetRestId = matchedRestaurantId.ifEmpty { businessId }
 
                 // Guardar en Firestore (se refrescará en tiempo real vía SnapshotListener)
                 repository.agregarPlatilloAMenu(
-                    restaurantId = businessId,
+                    restaurantId = targetRestId,
                     item = newItem,
                     onSuccess = {
                         Toast.makeText(context, "Platillo '$name' publicado en tiempo real", Toast.LENGTH_SHORT).show()
                     },
-                    onFailure = {
-                        menuList.add(newItem)
+                    onFailure = { e ->
+                        Toast.makeText(context, "Error al guardar platillo: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
                     }
                 )
 
@@ -539,7 +555,7 @@ fun BusinessScanQRDialog(
                         qrInput = it
                         if (errorMessage != null) errorMessage = null
                     },
-                    label = { Text("Código escaneado o texto QR") },
+                    label = { Text("Código escaneado") },
                     placeholder = { Text("Ej: FOODFAST:${order.id}") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
@@ -550,38 +566,6 @@ fun BusinessScanQRDialog(
                         }
                     }
                 )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = {
-                            val validCode = "FOODFAST:${order.id}:${order.clientName}"
-                            qrInput = validCode
-                            validateAndProcess(validCode)
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp)
-                    ) {
-                        Text("Simular QR Correcto", fontSize = 11.sp)
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            val wrongCode = "FOODFAST:PED-999-INCORRECTO"
-                            qrInput = wrongCode
-                            validateAndProcess(wrongCode)
-                        },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                    ) {
-                        Text("Simular QR Incorrecto", fontSize = 11.sp)
-                    }
-                }
             }
         },
         confirmButton = {
