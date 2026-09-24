@@ -6,6 +6,7 @@ data class StudentOrder(
     val id: String = "",
     val studentUsername: String = "",
     val studentName: String = "",
+    val restaurantId: String = "",
     val restaurantName: String = "",
     val itemsSummary: String = "",
     val total: String = "",

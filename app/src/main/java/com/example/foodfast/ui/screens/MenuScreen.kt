@@ -33,8 +33,8 @@ fun MenuScreen(
     onBack: () -> Unit,
     onViewCart: () -> Unit
 ) {
-    val restaurant = sampleRestaurants.find { it.id == restaurantId }
-    val menu = restaurantMenus[restaurantId] ?: emptyList()
+    val restaurant = viewModel.restaurantsList.find { it.id == restaurantId } ?: sampleRestaurants.find { it.id == restaurantId }
+    val menu = viewModel.menusMap[restaurantId] ?: restaurantMenus[restaurantId] ?: emptyList()
     val context = LocalContext.current
 
     Scaffold(

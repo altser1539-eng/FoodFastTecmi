@@ -133,8 +133,8 @@ fun LoginScreen(
                                 "carlos" to Pair("1234", User("2", "carlos_estudiante", "carlos@tecmilenio.mx", UserRole.ESTUDIANTE, "Carlos López", "02")),
                                 "maria_profe" to Pair("1234", User("3", "maria_profe", "maria@tecmilenio.mx", UserRole.PROFESOR, "Dra. María Gómez", "03")),
                                 "maria" to Pair("1234", User("3", "maria_profe", "maria@tecmilenio.mx", UserRole.PROFESOR, "Dra. María Gómez", "03")),
-                                "cocas_local" to Pair("1234", User("4", "cocas_local", "cocas@tecmilenio.mx", UserRole.NEGOCIO, "Restaurante Cocas", "NEG-01")),
-                                "cocas" to Pair("1234", User("4", "cocas_local", "cocas@tecmilenio.mx", UserRole.NEGOCIO, "Restaurante Cocas", "NEG-01"))
+                                "cocas_local" to Pair("1234", User("4", "cocas_local", "cocas@tecmilenio.mx", UserRole.NEGOCIO, "Cocas", "01")),
+                                "cocas" to Pair("1234", User("4", "cocas_local", "cocas@tecmilenio.mx", UserRole.NEGOCIO, "Cocas", "01"))
                             )
 
                             if (localSampleAccounts.containsKey(lowerUser)) {

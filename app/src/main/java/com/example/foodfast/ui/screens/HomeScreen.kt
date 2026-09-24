@@ -34,8 +34,6 @@ import com.example.foodfast.data.Restaurant
 import com.example.foodfast.data.SearchResult
 import com.example.foodfast.data.StudentOrder
 import com.example.foodfast.data.User
-import com.example.foodfast.data.restaurantMenus
-import com.example.foodfast.data.sampleRestaurants
 import com.example.foodfast.ui.components.QRCodeView
 import com.example.foodfast.ui.viewmodel.CartViewModel
 
@@ -51,18 +49,17 @@ fun HomeScreen(
     var query by remember { mutableStateOf("") }
     var selectedOrderForQr by remember { mutableStateOf<StudentOrder?>(null) }
 
-    val searchResults = remember(query) {
+    val searchResults = remember(query, viewModel.menusMap.size) {
         if (query.isEmpty()) emptyList<SearchResult>()
         else {
             val results = mutableListOf<SearchResult>()
-            restaurantMenus.forEach { (restaurantId, menu) ->
-                val restaurant = sampleRestaurants.find { it.id == restaurantId }
-                if (restaurant != null) {
-                    menu.filter { it.name.contains(query, ignoreCase = true) || it.description.contains(query, ignoreCase = true) }
-                        .forEach { item ->
-                            results.add(SearchResult(restaurantId, restaurant.name, item))
-                        }
-                }
+            viewModel.menusMap.forEach { (restaurantId, menu) ->
+                val restaurant = viewModel.restaurantsList.find { it.id == restaurantId }
+                val restName = restaurant?.name ?: "Local $restaurantId"
+                menu.filter { it.name.contains(query, ignoreCase = true) || it.description.contains(query, ignoreCase = true) }
+                    .forEach { item ->
+                        results.add(SearchResult(restaurantId, restName, item))
+                    }
             }
             results
         }
@@ -164,14 +161,17 @@ fun HomeScreen(
                     query = query,
                     onQueryChange = { query = it },
                     searchResults = searchResults,
+                    restaurants = viewModel.restaurantsList,
                     onRestaurantClick = onRestaurantClick
                 )
                 1 -> ActiveOrderMonitoringTab(
                     viewModel = viewModel,
+                    currentUser = currentUser,
                     onOrderClick = { order -> selectedOrderForQr = order }
                 )
                 2 -> OrderHistoryTab(
                     viewModel = viewModel,
+                    currentUser = currentUser,
                     onOrderClick = { order -> selectedOrderForQr = order }
                 )
             }
@@ -191,6 +191,7 @@ fun CatalogTabContent(
     query: String,
     onQueryChange: (String) -> Unit,
     searchResults: List<SearchResult>,
+    restaurants: List<Restaurant>,
     onRestaurantClick: (String, String?) -> Unit
 ) {
     Column(
@@ -246,7 +247,7 @@ fun CatalogTabContent(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            RestaurantList(onRestaurantClick = { id -> onRestaurantClick(id, null) })
+            RestaurantList(restaurants = restaurants, onRestaurantClick = { id -> onRestaurantClick(id, null) })
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -256,9 +257,19 @@ fun CatalogTabContent(
 @Composable
 fun ActiveOrderMonitoringTab(
     viewModel: CartViewModel,
+    currentUser: User? = null,
     onOrderClick: (StudentOrder) -> Unit
 ) {
-    val activeOrders = viewModel.ordersHistory.filter { it.status != OrderStatus.ENTREGADO }
+    val studentUsername = currentUser?.username ?: ""
+    val userOrders = if (studentUsername.isNotEmpty()) {
+        viewModel.ordersHistory.filter { 
+            it.studentUsername.equals(studentUsername, ignoreCase = true) ||
+            it.studentUsername.isEmpty() 
+        }
+    } else {
+        viewModel.ordersHistory
+    }
+    val activeOrders = userOrders.filter { it.status != OrderStatus.ENTREGADO }
 
     Column(
         modifier = Modifier
@@ -469,9 +480,18 @@ fun OrderStepProgress(currentStatus: OrderStatus) {
 @Composable
 fun OrderHistoryTab(
     viewModel: CartViewModel,
+    currentUser: User? = null,
     onOrderClick: (StudentOrder) -> Unit
 ) {
-    val allOrders = viewModel.ordersHistory
+    val studentUsername = currentUser?.username ?: ""
+    val allOrders = if (studentUsername.isNotEmpty()) {
+        viewModel.ordersHistory.filter { 
+            it.studentUsername.equals(studentUsername, ignoreCase = true) ||
+            it.studentUsername.isEmpty() 
+        }
+    } else {
+        viewModel.ordersHistory
+    }
 
     Column(
         modifier = Modifier
@@ -689,9 +709,12 @@ fun SearchResultItem(result: SearchResult, onClick: () -> Unit) {
 }
 
 @Composable
-fun RestaurantList(onRestaurantClick: (String) -> Unit) {
+fun RestaurantList(
+    restaurants: List<Restaurant>,
+    onRestaurantClick: (String) -> Unit
+) {
     Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        sampleRestaurants.forEach { restaurant ->
+        restaurants.forEach { restaurant ->
             RestaurantCard(restaurant = restaurant, onClick = onRestaurantClick)
         }
     }

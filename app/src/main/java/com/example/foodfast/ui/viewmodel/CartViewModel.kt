@@ -6,7 +6,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import com.example.foodfast.data.FirestoreRepository
 import com.example.foodfast.data.MenuItem
+import com.example.foodfast.data.Restaurant
 import com.example.foodfast.data.StudentOrder
+import com.example.foodfast.data.restaurantMenus
 import com.example.foodfast.data.sampleRestaurants
 import com.example.foodfast.ui.screens.OrderStatus
 import java.text.SimpleDateFormat
@@ -24,18 +26,37 @@ class CartViewModel : ViewModel() {
     var currentRestaurantId = mutableStateOf<String?>(null)
     val cartItems = mutableStateMapOf<String, CartItem>()
 
+    // Restaurantes y Menús sincronizados en tiempo real desde Firestore
+    val restaurantsList = mutableStateListOf<Restaurant>()
+    val menusMap = mutableStateMapOf<String, List<MenuItem>>()
+
     // Lista global de pedidos de la sesión sincronizada con Firestore
-    val ordersHistory = mutableStateListOf(
-        StudentOrder("PED-001", "carlos_estudiante", "Carlos López", "Cocas", "2x Pizza Pepperoni, 1x Coca-Cola", "$320.00", "22/09/2026 14:30", OrderStatus.EN_PREPARACION),
-        StudentOrder("PED-002", "carlos_estudiante", "Carlos López", "Periqueños", "1x Clásica con Queso", "$100.00", "21/09/2026 12:15", OrderStatus.ENTREGADO)
-    )
+    val ordersHistory = mutableStateListOf<StudentOrder>()
 
     init {
+        // Inicializar con datos locales por defecto
+        restaurantsList.addAll(sampleRestaurants)
+        menusMap.putAll(restaurantMenus)
+
+        // Escuchar restaurantes y menús desde Firestore en tiempo real
+        repository.escucharRestaurantesYMenus { dbRestaurants, dbMenus ->
+            if (dbRestaurants.isNotEmpty()) {
+                val existingIds = dbRestaurants.map { it.id }.toSet()
+                val mergedList = dbRestaurants + sampleRestaurants.filter { it.id !in existingIds }
+                restaurantsList.clear()
+                restaurantsList.addAll(mergedList)
+            }
+            if (dbMenus.isNotEmpty()) {
+                menusMap.putAll(dbMenus)
+            }
+        }
+
         // Escuchar cambios de pedidos en Firestore en tiempo real
         repository.escucharPedidos { dbOrders ->
+            ordersHistory.clear()
             if (dbOrders.isNotEmpty()) {
-                ordersHistory.clear()
-                ordersHistory.addAll(dbOrders)
+                // Mostrar pedidos más recientes primero
+                ordersHistory.addAll(dbOrders.reversed())
             }
         }
     }
@@ -77,21 +98,26 @@ class CartViewModel : ViewModel() {
     }
     
     fun getRestaurantName(): String {
-        return sampleRestaurants.find { it.id == currentRestaurantId.value }?.name ?: ""
+        return restaurantsList.find { it.id == currentRestaurantId.value }?.name ?: ""
     }
 
     fun placeOrder(studentUsername: String, studentName: String): StudentOrder {
+        val restId = currentRestaurantId.value ?: ""
         val restaurantName = getRestaurantName().ifEmpty { "Restaurante" }
         val totalFormatted = "$${String.format(Locale.getDefault(), "%.2f", getTotal())}"
         val summary = cartItems.values.joinToString(", ") { "${it.quantity}x ${it.menuItem.name}" }
-        val orderNum = ordersHistory.size + 1
-        val orderId = "PED-" + String.format(Locale.getDefault(), "%03d", orderNum)
+        
+        // Generar un ID único basado en timestamp y número aleatorio para evitar colisiones
+        val timeCode = SimpleDateFormat("HHmm", Locale.getDefault()).format(Date())
+        val randomDigits = (100..999).random()
+        val orderId = "PED-$timeCode-$randomDigits"
         val now = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
 
         val newOrder = StudentOrder(
             id = orderId,
             studentUsername = studentUsername,
             studentName = studentName,
+            restaurantId = restId,
             restaurantName = restaurantName,
             itemsSummary = summary.ifEmpty { "Pedido Variado" },
             total = totalFormatted,
@@ -99,11 +125,15 @@ class CartViewModel : ViewModel() {
             status = OrderStatus.PENDIENTE
         )
 
-        // Guardar pedido en Firestore
+        // Guardar pedido en Firestore (se propagará automáticamente en tiempo real vía SnapshotListener)
         repository.guardarPedido(
             order = newOrder,
             onSuccess = {},
-            onFailure = { ordersHistory.add(0, newOrder) }
+            onFailure = {
+                if (!ordersHistory.any { it.id == newOrder.id }) {
+                    ordersHistory.add(0, newOrder)
+                }
+            }
         )
 
         clearCart()

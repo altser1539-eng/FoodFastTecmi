@@ -14,6 +14,7 @@ import androidx.compose.material.icons.automirrored.filled.ListAlt
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.Star
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.foodfast.data.FirestoreRepository
 import com.example.foodfast.data.MenuItem
 import com.example.foodfast.data.User
@@ -58,46 +60,77 @@ fun BusinessHomeScreen(
     val repository = remember { FirestoreRepository() }
     var selectedOrderForScan by remember { mutableStateOf<BusinessOrder?>(null) }
 
-    // Pedidos iniciales de muestra
-    val orders = remember {
-        mutableStateListOf(
-            BusinessOrder("101", "Carlos López", "Estudiante", listOf("2x Pizza Pepperoni", "1x Coca-Cola"), "$320.00", OrderStatus.PENDIENTE),
-            BusinessOrder("102", "Dra. María Gómez", "Profesor", listOf("1x Calzone", "1x Agua Mineral"), "$165.00", OrderStatus.EN_PREPARACION),
-            BusinessOrder("103", "Ana Martínez", "Estudiante", listOf("1x Pizza Margarita"), "$120.00", OrderStatus.LISTO)
-        )
-    }
+    val orders = remember { mutableStateListOf<BusinessOrder>() }
+    val menuList = remember { mutableStateListOf<MenuItem>() }
+
+    val context = LocalContext.current
+    val businessId = currentUser?.identificador?.ifEmpty { "01" } ?: "01"
+    val businessName = currentUser?.nombreCompleto?.ifEmpty { "Panel de Negocio" } ?: "Panel de Negocio"
+    var previousOrderCount by remember { mutableIntStateOf(-1) }
 
     // Escuchar pedidos de Firestore en tiempo real
-    LaunchedEffect(Unit) {
+    LaunchedEffect(currentUser) {
         repository.escucharPedidos { dbOrders ->
-            if (dbOrders.isNotEmpty()) {
-                orders.clear()
-                val converted = dbOrders.map { studentOrder ->
-                    BusinessOrder(
-                        id = studentOrder.id,
-                        clientName = studentOrder.studentName.ifEmpty { studentOrder.studentUsername },
-                        clientRole = "Estudiante",
-                        items = listOf(studentOrder.itemsSummary),
-                        total = studentOrder.total,
-                        status = studentOrder.status
-                    )
+            // Filtrar los pedidos correspondientes a este negocio
+            val filteredDbOrders = dbOrders.filter { order ->
+                if (currentUser == null) true
+                else {
+                    val idMatch = order.restaurantId.equals(businessId, ignoreCase = true) ||
+                            (order.restaurantId == "01" && (businessId == "NEG-01" || businessName.contains("Cocas", ignoreCase = true)))
+                    val nameMatch = order.restaurantName.contains(businessName, ignoreCase = true) ||
+                            businessName.contains(order.restaurantName, ignoreCase = true) ||
+                            order.restaurantName.contains(currentUser.username, ignoreCase = true)
+                    idMatch || nameMatch
                 }
-                orders.addAll(converted)
+            }
+
+            val targetList = if (filteredDbOrders.isNotEmpty()) filteredDbOrders else dbOrders
+
+            val converted = targetList.map { studentOrder ->
+                BusinessOrder(
+                    id = studentOrder.id,
+                    clientName = studentOrder.studentName.ifEmpty { studentOrder.studentUsername },
+                    clientRole = "Estudiante",
+                    items = listOf(studentOrder.itemsSummary),
+                    total = studentOrder.total,
+                    status = studentOrder.status
+                )
+            }.reversed() // Pedidos más recientes arriba
+
+            // Notificación visual de nuevo pedido en tiempo real
+            if (previousOrderCount != -1 && converted.size > previousOrderCount) {
+                val latest = converted.firstOrNull()
+                val client = latest?.clientName ?: "Cliente"
+                Toast.makeText(context, "¡NUEVO PEDIDO EN TIEMPO REAL! ${latest?.id ?: ""} de $client", Toast.LENGTH_LONG).show()
+            }
+            previousOrderCount = converted.size
+
+            orders.clear()
+            orders.addAll(converted)
+        }
+    }
+
+    // Escuchar menú del negocio desde Firestore en tiempo real
+    LaunchedEffect(businessId) {
+        repository.escucharRestaurantesYMenus { _, dbMenus ->
+            val myMenu = dbMenus[businessId]
+            if (!myMenu.isNullOrEmpty()) {
+                menuList.clear()
+                menuList.addAll(myMenu)
+            } else if (menuList.isEmpty()) {
+                // Menú por defecto si Firestore está vacío para este ID
+                menuList.addAll(
+                    listOf(
+                        MenuItem("Pizza Margarita", "$120.00", "Tomate, mozzarella y albahaca fresca."),
+                        MenuItem("Pizza Pepperoni", "$140.00", "Pepperoni clásico con mozzarella."),
+                        MenuItem("Calzone", "$135.00", "Relleno de jamón y queso.")
+                    )
+                )
             }
         }
     }
 
-    // Platillos del menú del negocio
-    val menuList = remember {
-        mutableStateListOf(
-            MenuItem("Pizza Margarita", "$120.00", "Tomate, mozzarella y albahaca fresca."),
-            MenuItem("Pizza Pepperoni", "$140.00", "Pepperoni clásico con mozzarella."),
-            MenuItem("Calzone", "$135.00", "Relleno de jamón y queso.")
-        )
-    }
-
     var showAddDishDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
 
     Scaffold(
         topBar = {
@@ -105,7 +138,7 @@ fun BusinessHomeScreen(
                 title = {
                     Column {
                         Text(
-                            text = currentUser?.nombreCompleto?.ifEmpty { "Panel de Negocio" } ?: "Panel de Negocio",
+                            text = businessName,
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -119,6 +152,12 @@ fun BusinessHomeScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
                                 color = if (isBusinessOpen) Color(0xFF2E7D32) else Color(0xFFC62828)
+                            )
+                            Text(
+                                text = " • En vivo",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color(0xFF2E7D32),
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
@@ -212,19 +251,20 @@ fun BusinessHomeScreen(
             onDismiss = { showAddDishDialog = false },
             onAddDish = { name, price, desc ->
                 val newItem = MenuItem(name, "$$price", desc)
-                menuList.add(newItem)
 
-                // Guardar en Firestore
-                val restId = currentUser?.identificador?.ifEmpty { "01" } ?: "01"
+                // Guardar en Firestore (se refrescará en tiempo real vía SnapshotListener)
                 repository.agregarPlatilloAMenu(
-                    restaurantId = restId,
+                    restaurantId = businessId,
                     item = newItem,
-                    onSuccess = {},
-                    onFailure = {}
+                    onSuccess = {
+                        Toast.makeText(context, "Platillo '$name' publicado en tiempo real", Toast.LENGTH_SHORT).show()
+                    },
+                    onFailure = {
+                        menuList.add(newItem)
+                    }
                 )
 
                 showAddDishDialog = false
-                Toast.makeText(context, "Platillo '$name' guardado en Firestore", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -238,7 +278,7 @@ fun OrdersTabContent(
 ) {
     if (orders.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("No hay pedidos registrados.")
+            Text("No hay pedidos registrados en tiempo real.")
         }
     } else {
         LazyColumn(
@@ -264,13 +304,11 @@ fun OrderCard(
     onStatusChange: (String, OrderStatus) -> Unit,
     onOpenScanQr: () -> Unit
 ) {
-    var currentStatus by remember { mutableStateOf(order.status) }
-
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
-                if (currentStatus == OrderStatus.LISTO) {
+                if (order.status == OrderStatus.LISTO) {
                     onOpenScanQr()
                 }
             },
@@ -290,12 +328,12 @@ fun OrderCard(
                 )
 
                 Surface(
-                    color = currentStatus.containerColor,
+                    color = order.status.containerColor,
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
-                        text = currentStatus.label,
-                        color = currentStatus.contentColor,
+                        text = order.status.label,
+                        color = order.status.contentColor,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
@@ -342,12 +380,10 @@ fun OrderCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
-                when (currentStatus) {
+                when (order.status) {
                     OrderStatus.PENDIENTE -> {
                         Button(
                             onClick = {
-                                currentStatus = OrderStatus.EN_PREPARACION
-                                order.status = OrderStatus.EN_PREPARACION
                                 onStatusChange(order.id, OrderStatus.EN_PREPARACION)
                             },
                             shape = RoundedCornerShape(8.dp)
@@ -358,8 +394,6 @@ fun OrderCard(
                     OrderStatus.EN_PREPARACION -> {
                         Button(
                             onClick = {
-                                currentStatus = OrderStatus.LISTO
-                                order.status = OrderStatus.LISTO
                                 onStatusChange(order.id, OrderStatus.LISTO)
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
@@ -398,11 +432,33 @@ fun BusinessScanQRDialog(
     onDismiss: () -> Unit,
     onConfirmDelivery: () -> Unit
 ) {
+    var qrInput by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+    var isSuccess by remember { mutableStateOf(false) }
+
+    val validateAndProcess: (String) -> Unit = { input ->
+        val trimmed = input.trim()
+        if (trimmed.isEmpty()) {
+            errorMessage = "No se ha escaneado ningún código. Mantén la cámara apuntando al código QR."
+            isSuccess = false
+        } else if (trimmed.contains(order.id, ignoreCase = true) ||
+            trimmed.equals("FOODFAST:${order.id}", ignoreCase = true) ||
+            trimmed.startsWith("FOODFAST:${order.id}")
+        ) {
+            errorMessage = null
+            isSuccess = true
+            onConfirmDelivery()
+        } else {
+            isSuccess = false
+            errorMessage = "Código QR incorrecto. El código escaneado no coincide con el Pedido #${order.id}."
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("Escanear Código QR", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                Text("Escáner de Código QR", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
                 Text("Pedido #${order.id} - ${order.clientName}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
             }
         },
@@ -412,46 +468,140 @@ fun BusinessScanQRDialog(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "Apunta la cámara al código QR mostrado en el teléfono del cliente para confirmar la entrega.",
+                    text = "Apunta la cámara al código QR en la pantalla del alumno/profesor para validar la entrega.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 16.dp)
+                    modifier = Modifier.padding(bottom = 12.dp)
                 )
 
-                // Visual Scanner Frame / Camera Viewfinder
+                val borderColor = when {
+                    isSuccess -> Color(0xFF2E7D32)
+                    errorMessage != null -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.primary
+                }
+
                 Box(
                     contentAlignment = Alignment.Center,
                     modifier = Modifier
-                        .size(200.dp)
+                        .fillMaxWidth()
+                        .height(180.dp)
                         .background(Color.Black.copy(alpha = 0.9f), RoundedCornerShape(16.dp))
-                        .border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                        .border(3.dp, borderColor, RoundedCornerShape(16.dp))
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(16.dp)
+                    ) {
                         Icon(
-                            imageVector = Icons.Default.QrCodeScanner,
+                            imageVector = if (isSuccess) Icons.Default.CheckCircle else Icons.Default.QrCodeScanner,
                             contentDescription = "Escáner QR",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(64.dp)
+                            tint = borderColor,
+                            modifier = Modifier.size(56.dp)
                         )
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("Escaneando...", color = Color.White, style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            text = when {
+                                isSuccess -> "¡Código Correcto!"
+                                errorMessage != null -> "Error de lectura"
+                                else -> "Escaneando... Esperando código QR"
+                            },
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                if (errorMessage != null) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer,
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Error,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = errorMessage!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
 
-                QRCodeView(data = "FOODFAST:${order.id}", sizeDp = 90)
+                Spacer(modifier = Modifier.height(12.dp))
+
+                OutlinedTextField(
+                    value = qrInput,
+                    onValueChange = {
+                        qrInput = it
+                        if (errorMessage != null) errorMessage = null
+                    },
+                    label = { Text("Código escaneado o texto QR") },
+                    placeholder = { Text("Ej: FOODFAST:${order.id}") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    trailingIcon = {
+                        IconButton(onClick = { validateAndProcess(qrInput) }) {
+                            Icon(Icons.Default.CheckCircle, contentDescription = "Validar")
+                        }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            val validCode = "FOODFAST:${order.id}:${order.clientName}"
+                            qrInput = validCode
+                            validateAndProcess(validCode)
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text("Simular QR Correcto", fontSize = 11.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val wrongCode = "FOODFAST:PED-999-INCORRECTO"
+                            qrInput = wrongCode
+                            validateAndProcess(wrongCode)
+                        },
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Simular QR Incorrecto", fontSize = 11.sp)
+                    }
+                }
             }
         },
         confirmButton = {
             Button(
-                onClick = onConfirmDelivery,
+                onClick = { validateAndProcess(qrInput) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
             ) {
                 Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(modifier = Modifier.width(6.dp))
-                Text("Validar QR y Entregar Pedido", fontWeight = FontWeight.Bold)
+                Text("Validar Código y Entregar", fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
