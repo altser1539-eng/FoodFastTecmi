@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.material.icons.automirrored.filled.ListAlt
@@ -15,17 +17,24 @@ import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.RestaurantMenu
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.Store
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
 import com.example.foodfast.data.FirestoreRepository
 import com.example.foodfast.data.MenuItem
 import com.example.foodfast.data.User
@@ -109,6 +118,9 @@ fun BusinessHomeScreen(
     }
 
     var matchedRestaurantId by remember { mutableStateOf("") }
+    var businessNameState by remember { mutableStateOf(businessName) }
+    var timeState by remember { mutableStateOf("15-25 min") }
+    var imageUrlState by remember { mutableStateOf("https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=500") }
 
     // Escuchar menú del negocio desde Firestore en tiempo real
     LaunchedEffect(businessId, currentUser) {
@@ -120,6 +132,13 @@ fun BusinessHomeScreen(
                 rest.name.contains(businessName, ignoreCase = true) ||
                 businessName.contains(rest.name, ignoreCase = true) ||
                 (rest.id == "01" && (businessId == "NEG-01" || businessName.contains("Cocas", ignoreCase = true)))
+            }
+
+            if (matchedRest != null) {
+                isBusinessOpen = matchedRest.isOpen
+                businessNameState = matchedRest.name
+                timeState = matchedRest.time
+                imageUrlState = matchedRest.imageUrl
             }
 
             val targetRestId = matchedRest?.id ?: currentUser?.identificador?.ifEmpty { businessId } ?: businessId
@@ -144,7 +163,7 @@ fun BusinessHomeScreen(
                 title = {
                     Column {
                         Text(
-                            text = businessName,
+                            text = businessNameState.ifEmpty { businessName },
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold
                         )
@@ -171,7 +190,19 @@ fun BusinessHomeScreen(
                 actions = {
                     Switch(
                         checked = isBusinessOpen,
-                        onCheckedChange = { isBusinessOpen = it }
+                        onCheckedChange = { newState ->
+                            isBusinessOpen = newState
+                            val targetRestId = matchedRestaurantId.ifEmpty { businessId }
+                            repository.actualizarEstadoAbiertoRestaurante(
+                                restaurantId = targetRestId,
+                                restaurantName = businessNameState.ifEmpty { businessName },
+                                isOpen = newState,
+                                onSuccess = {
+                                    val statusText = if (newState) "Abierto" else "Cerrado"
+                                    Toast.makeText(context, "Negocio $statusText (Actualizado para alumnos)", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
                     )
                     IconButton(onClick = onLogout) {
                         Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Cerrar Sesión")
@@ -202,6 +233,12 @@ fun BusinessHomeScreen(
                     icon = { Icon(Icons.AutoMirrored.Filled.TrendingUp, contentDescription = null) },
                     label = { Text("Ventas") }
                 )
+                NavigationBarItem(
+                    selected = (selectedTab == 3),
+                    onClick = { selectedTab = 3 },
+                    icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                    label = { Text("Ajustes") }
+                )
             }
         },
         floatingActionButton = {
@@ -231,6 +268,34 @@ fun BusinessHomeScreen(
                 )
                 1 -> MenuTabContent(menuList = menuList)
                 2 -> StatsTabContent(orders = orders)
+                3 -> BusinessSettingsTabContent(
+                    currentName = businessNameState,
+                    currentTime = timeState,
+                    currentImageUrl = imageUrlState,
+                    isOpen = isBusinessOpen,
+                    onSaveSettings = { newName, newTime, newImageUrl, newIsOpen ->
+                        businessNameState = newName
+                        timeState = newTime
+                        imageUrlState = newImageUrl
+                        isBusinessOpen = newIsOpen
+
+                        val targetRestId = matchedRestaurantId.ifEmpty { businessId }
+                        repository.actualizarAjustesRestaurante(
+                            restaurantId = targetRestId,
+                            restaurantName = businessName,
+                            newName = newName,
+                            newTime = newTime,
+                            newImageUrl = newImageUrl,
+                            isOpen = newIsOpen,
+                            onSuccess = {
+                                Toast.makeText(context, "Ajustes del negocio guardados en Firestore", Toast.LENGTH_SHORT).show()
+                            },
+                            onFailure = { e ->
+                                Toast.makeText(context, "Error al guardar ajustes: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
+                )
             }
         }
     }
@@ -794,4 +859,171 @@ fun AddDishDialog(
             }
         }
     )
+}
+
+@Composable
+fun BusinessSettingsTabContent(
+    currentName: String,
+    currentTime: String,
+    currentImageUrl: String,
+    isOpen: Boolean,
+    onSaveSettings: (newName: String, newTime: String, newImageUrl: String, isOpen: Boolean) -> Unit
+) {
+    var name by remember(currentName) { mutableStateOf(currentName) }
+    var time by remember(currentTime) { mutableStateOf(currentTime) }
+    var imageUrl by remember(currentImageUrl) { mutableStateOf(currentImageUrl) }
+    var isBusinessOpen by remember(isOpen) { mutableStateOf(isOpen) }
+
+    val scrollState = rememberScrollState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text(
+            text = "Ajustes del Establecimiento",
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Text(
+            text = "Personaliza la información pública de tu local que verán los clientes",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f)
+        )
+
+        // Tarjeta de Vista Previa de Portada
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column {
+                Box {
+                    AsyncImage(
+                        model = imageUrl.ifEmpty { "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=500" },
+                        contentDescription = "Vista Previa de Imagen",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp),
+                        contentScale = ContentScale.Crop
+                    )
+                    Surface(
+                        color = if (isBusinessOpen) Color(0xFF2E7D32) else Color(0xFFC62828),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .padding(12.dp)
+                            .align(Alignment.TopEnd)
+                    ) {
+                        Text(
+                            text = if (isBusinessOpen) "ABIERTO" else "CERRADO",
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    }
+                }
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = name.ifEmpty { "Nombre de tu Local" },
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                        Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Horario / Preparación: ${time.ifEmpty { "15-25 min" }}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        // Interruptor Abierto / Cerrado
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Estado del Local",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = if (isBusinessOpen) "El local es visible y recibe pedidos de alumnos" else "El local está oculto para los alumnos y no recibe pedidos",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = isBusinessOpen,
+                    onCheckedChange = { isBusinessOpen = it }
+                )
+            }
+        }
+
+        // Formulario de Edición
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Nombre del Restaurante / Local") },
+            leadingIcon = { Icon(Icons.Default.Store, contentDescription = null) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        OutlinedTextField(
+            value = time,
+            onValueChange = { time = it },
+            label = { Text("Horario de Atención / Tiempo estimado") },
+            placeholder = { Text("Ej: 15-25 min  o  8:00 AM - 6:00 PM") },
+            leadingIcon = { Icon(Icons.Default.Schedule, contentDescription = null) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        OutlinedTextField(
+            value = imageUrl,
+            onValueChange = { imageUrl = it },
+            label = { Text("URL de la Imagen de Portada / Logo") },
+            leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Button(
+            onClick = {
+                onSaveSettings(name.trim(), time.trim(), imageUrl.trim(), isBusinessOpen)
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(52.dp),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(Icons.Default.Save, contentDescription = null)
+            Spacer(modifier = Modifier.width(8.dp))
+            Text("Guardar Ajustes en Firestore", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+    }
 }

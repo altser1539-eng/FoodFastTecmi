@@ -129,6 +129,7 @@ class FirestoreRepository {
             "rating" to restaurant.rating,
             "time" to restaurant.time,
             "imageUrl" to restaurant.imageUrl,
+            "isOpen" to restaurant.isOpen,
             "menu" to menuListMaps
         )
 
@@ -155,8 +156,9 @@ class FirestoreRepository {
                     val rating = doc.getString("rating") ?: "4.5"
                     val time = doc.getString("time") ?: "15-25 min"
                     val imageUrl = doc.getString("imageUrl") ?: "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=500"
+                    val isOpen = doc.getBoolean("isOpen") ?: true
 
-                    val rest = Restaurant(id, name, rating, time, imageUrl)
+                    val rest = Restaurant(id, name, rating, time, imageUrl, isOpen)
                     listaRestaurantes.add(rest)
 
                     val rawMenu = doc.get("menu") as? List<Map<String, Any>> ?: emptyList()
@@ -194,8 +196,9 @@ class FirestoreRepository {
                     val rating = doc.getString("rating") ?: "4.5"
                     val time = doc.getString("time") ?: "15-25 min"
                     val imageUrl = doc.getString("imageUrl") ?: "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=500"
+                    val isOpen = doc.getBoolean("isOpen") ?: true
 
-                    val rest = Restaurant(id, name, rating, time, imageUrl)
+                    val rest = Restaurant(id, name, rating, time, imageUrl, isOpen)
                     listaRestaurantes.add(rest)
 
                     val rawMenu = doc.get("menu") as? List<Map<String, Any>> ?: emptyList()
@@ -214,6 +217,77 @@ class FirestoreRepository {
                 val deduplicatedRestaurantes = listaRestaurantes.distinctBy { it.name.lowercase().trim() }
                 onDataChanged(deduplicatedRestaurantes, mapaMenus)
             }
+    }
+
+    fun actualizarEstadoAbiertoRestaurante(
+        restaurantId: String,
+        restaurantName: String = "",
+        isOpen: Boolean,
+        onSuccess: () -> Unit = {},
+        onFailure: (Exception) -> Unit = {}
+    ) {
+        db.collection("restaurants").get()
+            .addOnSuccessListener { snapshot ->
+                val matchingDoc = snapshot.documents.find { doc ->
+                    val docId = doc.id
+                    val fieldId = doc.getString("id") ?: ""
+                    val name = doc.getString("name") ?: ""
+
+                    docId.equals(restaurantId, ignoreCase = true) ||
+                    fieldId.equals(restaurantId, ignoreCase = true) ||
+                    (restaurantName.isNotBlank() && (
+                        name.equals(restaurantName, ignoreCase = true) ||
+                        name.contains(restaurantName, ignoreCase = true) ||
+                        restaurantName.contains(name, ignoreCase = true)
+                    ))
+                }
+
+                val docRef = matchingDoc?.reference ?: db.collection("restaurants").document(restaurantId)
+                docRef.set(mapOf("isOpen" to isOpen), com.google.firebase.firestore.SetOptions.merge())
+                    .addOnSuccessListener { onSuccess() }
+                    .addOnFailureListener { e -> onFailure(e) }
+            }
+            .addOnFailureListener { e -> onFailure(e) }
+    }
+
+    fun actualizarAjustesRestaurante(
+        restaurantId: String,
+        restaurantName: String = "",
+        newName: String,
+        newTime: String,
+        newImageUrl: String,
+        isOpen: Boolean,
+        onSuccess: () -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
+        db.collection("restaurants").get()
+            .addOnSuccessListener { snapshot ->
+                val matchingDoc = snapshot.documents.find { doc ->
+                    val docId = doc.id
+                    val fieldId = doc.getString("id") ?: ""
+                    val name = doc.getString("name") ?: ""
+
+                    docId.equals(restaurantId, ignoreCase = true) ||
+                    fieldId.equals(restaurantId, ignoreCase = true) ||
+                    (restaurantName.isNotBlank() && (
+                        name.equals(restaurantName, ignoreCase = true) ||
+                        name.contains(restaurantName, ignoreCase = true) ||
+                        restaurantName.contains(name, ignoreCase = true)
+                    ))
+                }
+
+                val docRef = matchingDoc?.reference ?: db.collection("restaurants").document(restaurantId)
+                val updates = mapOf(
+                    "name" to newName,
+                    "time" to newTime,
+                    "imageUrl" to newImageUrl,
+                    "isOpen" to isOpen
+                )
+                docRef.set(updates, com.google.firebase.firestore.SetOptions.merge())
+                    .addOnSuccessListener { onSuccess() }
+                    .addOnFailureListener { e -> onFailure(e) }
+            }
+            .addOnFailureListener { e -> onFailure(e) }
     }
 
     fun agregarPlatilloAMenu(

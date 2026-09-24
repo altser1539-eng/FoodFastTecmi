@@ -49,17 +49,20 @@ fun HomeScreen(
     var query by remember { mutableStateOf("") }
     var selectedOrderForQr by remember { mutableStateOf<StudentOrder?>(null) }
 
-    val searchResults = remember(query, viewModel.menusMap.size) {
+    val openRestaurants = viewModel.restaurantsList.filter { it.isOpen }
+
+    val searchResults = remember(query, viewModel.menusMap.size, viewModel.restaurantsList.size) {
         if (query.isEmpty()) emptyList<SearchResult>()
         else {
             val results = mutableListOf<SearchResult>()
             viewModel.menusMap.forEach { (restaurantId, menu) ->
-                val restaurant = viewModel.restaurantsList.find { it.id == restaurantId }
-                val restName = restaurant?.name ?: "Local $restaurantId"
-                menu.filter { it.name.contains(query, ignoreCase = true) || it.description.contains(query, ignoreCase = true) }
-                    .forEach { item ->
-                        results.add(SearchResult(restaurantId, restName, item))
-                    }
+                val restaurant = openRestaurants.find { it.id == restaurantId }
+                if (restaurant != null) {
+                    menu.filter { it.name.contains(query, ignoreCase = true) || it.description.contains(query, ignoreCase = true) }
+                        .forEach { item ->
+                            results.add(SearchResult(restaurantId, restaurant.name, item))
+                        }
+                }
             }
             results
         }
@@ -161,7 +164,7 @@ fun HomeScreen(
                     query = query,
                     onQueryChange = { query = it },
                     searchResults = searchResults,
-                    restaurants = viewModel.restaurantsList,
+                    restaurants = openRestaurants,
                     onRestaurantClick = onRestaurantClick
                 )
                 1 -> ActiveOrderMonitoringTab(
