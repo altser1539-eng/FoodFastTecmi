@@ -684,9 +684,7 @@ fun MenuTabContent(
             )
         }
     } else {
-        val sortedMenu = remember(menuList) {
-            menuList.sortedByDescending { it.isAvailable }
-        }
+        val sortedMenu = menuList.sortedByDescending { it.isAvailable }
 
         LazyColumn(
             modifier = Modifier

@@ -49,9 +49,7 @@ fun HomeScreen(
     var query by remember { mutableStateOf("") }
     var selectedOrderForQr by remember { mutableStateOf<StudentOrder?>(null) }
 
-    val sortedRestaurants = remember(viewModel.restaurantsList) {
-        viewModel.restaurantsList.sortedByDescending { it.isOpen }
-    }
+    val sortedRestaurants = viewModel.restaurantsList.sortedByDescending { it.isOpen }
     
     val openRestaurants = sortedRestaurants.filter { it.isOpen }
 

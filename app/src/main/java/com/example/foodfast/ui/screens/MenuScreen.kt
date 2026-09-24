@@ -33,9 +33,7 @@ fun MenuScreen(
 ) {
     val restaurant = viewModel.restaurantsList.find { it.id == restaurantId }
     val menu = viewModel.menusMap[restaurantId] ?: emptyList()
-    val sortedMenu = remember(menu) {
-        menu.sortedWith(compareByDescending<MenuItem> { it.isAvailable }.thenBy { it.name })
-    }
+    val sortedMenu = menu.sortedWith(compareByDescending<MenuItem> { it.isAvailable }.thenBy { it.name })
     val context = LocalContext.current
 
     Scaffold(
