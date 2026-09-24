@@ -12,7 +12,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,6 +33,9 @@ fun MenuScreen(
 ) {
     val restaurant = viewModel.restaurantsList.find { it.id == restaurantId }
     val menu = viewModel.menusMap[restaurantId] ?: emptyList()
+    val sortedMenu = remember(menu) {
+        menu.sortedWith(compareByDescending<MenuItem> { it.isAvailable }.thenBy { it.name })
+    }
     val context = LocalContext.current
 
     Scaffold(
@@ -87,7 +90,7 @@ fun MenuScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            if (menu.isEmpty()) {
+            if (sortedMenu.isEmpty()) {
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
@@ -103,7 +106,7 @@ fun MenuScreen(
                     }
                 }
             } else {
-                items(menu) { item ->
+                items(sortedMenu) { item ->
                     val isHighlighted = item.name.equals(highlightedDish, ignoreCase = true)
                     val quantity = viewModel.cartItems[item.name]?.quantity ?: 0
                     
@@ -112,9 +115,13 @@ fun MenuScreen(
                         isHighlighted = isHighlighted,
                         quantity = quantity,
                         onAdd = {
-                            val success = viewModel.addToCart(restaurantId, item)
-                            if (!success) {
-                                Toast.makeText(context, "No puedes mezclar restaurantes. Vacía tu pedido actual.", Toast.LENGTH_SHORT).show()
+                            if (item.isAvailable) {
+                                val success = viewModel.addToCart(restaurantId, item)
+                                if (!success) {
+                                    Toast.makeText(context, "No puedes mezclar restaurantes. Vacía tu pedido actual.", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                Toast.makeText(context, "Este platillo está agotado temporalmente.", Toast.LENGTH_SHORT).show()
                             }
                         },
                         onRemove = { viewModel.removeFromCart(item) }
@@ -137,13 +144,14 @@ fun MenuItemCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isHighlighted) 
-                MaterialTheme.colorScheme.primaryContainer 
-            else 
-                MaterialTheme.colorScheme.surface
+            containerColor = when {
+                !item.isAvailable -> Color(0xFFEEEEEE)
+                isHighlighted -> MaterialTheme.colorScheme.primaryContainer
+                else -> MaterialTheme.colorScheme.surface
+            }
         ),
-        border = if (isHighlighted) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        border = if (isHighlighted && item.isAvailable) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+        elevation = CardDefaults.cardElevation(defaultElevation = if (item.isAvailable) 2.dp else 0.dp)
     ) {
         Row(
             modifier = Modifier
@@ -153,21 +161,50 @@ fun MenuItemCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = item.name,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = item.name,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (item.isAvailable) MaterialTheme.colorScheme.onSurface else Color.Gray
+                    )
+                    if (!item.isAvailable) {
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Surface(
+                            color = Color(0xFFD32F2F),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = "AGOTADO",
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+                
                 Text(
                     text = item.description,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    color = if (item.isAvailable) MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f) else Color.Gray
                 )
+                
+                Text(
+                    text = "Tiempo estimado: ${item.time}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (item.isAvailable) MaterialTheme.colorScheme.primary else Color.Gray,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+
                 Text(
                     text = item.price,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Black,
-                    color = MaterialTheme.colorScheme.primary
+                    color = if (item.isAvailable) MaterialTheme.colorScheme.primary else Color.Gray,
+                    modifier = Modifier.padding(top = 2.dp)
                 )
             }
             
@@ -183,11 +220,27 @@ fun MenuItemCard(
                         modifier = Modifier.padding(horizontal = 8.dp)
                     )
                 }
-                FilledIconButton(
-                    onClick = onAdd,
-                    colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary)
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Agregar")
+                
+                if (item.isAvailable) {
+                    FilledIconButton(
+                        onClick = onAdd,
+                        colors = IconButtonDefaults.filledIconButtonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Agregar")
+                    }
+                } else {
+                    Surface(
+                        color = Color.Gray.copy(alpha = 0.3f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "Agotado",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Color.Gray,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                        )
+                    }
                 }
             }
         }

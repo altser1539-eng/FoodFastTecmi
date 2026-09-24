@@ -266,24 +266,7 @@ fun BusinessHomeScreen(
                     },
                     onOpenScanQr = { order -> selectedOrderForScan = order }
                 )
-                1 -> MenuTabContent(
-                    menuList = menuList,
-                    onUpdateDish = { updatedItem ->
-                        val targetRestId = matchedRestaurantId.ifEmpty { businessId }
-                        repository.actualizarPlatilloMenu(
-                            restaurantId = targetRestId,
-                            restaurantName = businessName,
-                            originalItemName = updatedItem.name,
-                            updatedItem = updatedItem,
-                            onSuccess = {
-                                Toast.makeText(context, "Platillo actualizado", Toast.LENGTH_SHORT).show()
-                            },
-                            onFailure = { e ->
-                                Toast.makeText(context, "Error al actualizar: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
-                            }
-                        )
-                    }
-                )
+                1 -> MenuTabContent(menuList = menuList)
                 2 -> StatsTabContent(orders = orders)
                 3 -> BusinessSettingsTabContent(
                     currentName = businessNameState,
@@ -337,8 +320,8 @@ fun BusinessHomeScreen(
     if (showAddDishDialog) {
         AddDishDialog(
             onDismiss = { showAddDishDialog = false },
-            onAddDish = { name, formattedPrice, desc, time ->
-                val newItem = MenuItem(name, formattedPrice, desc, time, true)
+            onAddDish = { name, formattedPrice, desc ->
+                val newItem = MenuItem(name, formattedPrice, desc)
                 val targetRestId = matchedRestaurantId.ifEmpty { businessId }
 
                 // Guardar en Firestore (se refrescará en tiempo real vía SnapshotListener)
@@ -671,10 +654,7 @@ fun BusinessScanQRDialog(
 }
 
 @Composable
-fun MenuTabContent(
-    menuList: List<MenuItem>,
-    onUpdateDish: (MenuItem) -> Unit
-) {
+fun MenuTabContent(menuList: List<MenuItem>) {
     if (menuList.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
@@ -684,111 +664,58 @@ fun MenuTabContent(
             )
         }
     } else {
-        val sortedMenu = remember(menuList) {
-            menuList.sortedByDescending { it.isAvailable }
-        }
-
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(sortedMenu) { item ->
-                var showEditTimeDialog by remember { mutableStateOf(false) }
+            items(menuList) { item ->
+                var isAvailable by remember { mutableStateOf(true) }
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Column(
-                        modifier = if (!item.isAvailable) Modifier.background(Color.Gray.copy(alpha = 0.5f)) else Modifier
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = item.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = item.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                                )
-                                Text(
-                                    text = item.price,
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(top = 4.dp)
-                                )
-                                if (item.time.isNotBlank()) {
-                                    Text(
-                                        text = "Tiempo: ${item.time}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(top = 4.dp).clickable { showEditTimeDialog = true }
-                                    )
-                                } else {
-                                    Text(
-                                        text = "Añadir tiempo estimado",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(top = 4.dp).clickable { showEditTimeDialog = true }
-                                    )
-                                }
-                            }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = item.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = item.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                            Text(
+                                text = item.price,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
 
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = if (item.isAvailable) "Disponible" else "Agotado",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (item.isAvailable) Color(0xFF2E7D32) else Color.DarkGray
-                                )
-                                Switch(
-                                    checked = item.isAvailable,
-                                    onCheckedChange = { newState ->
-                                        onUpdateDish(item.copy(isAvailable = newState))
-                                    }
-                                )
-                            }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = if (isAvailable) "Disponible" else "Agotado",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isAvailable) Color(0xFF2E7D32) else Color.Red
+                            )
+                            Switch(
+                                checked = isAvailable,
+                                onCheckedChange = { isAvailable = it }
+                            )
                         }
                     }
-                }
-
-                if (showEditTimeDialog) {
-                    var newTime by remember { mutableStateOf(item.time) }
-                    AlertDialog(
-                        onDismissRequest = { showEditTimeDialog = false },
-                        title = { Text("Editar Tiempo Estimado") },
-                        text = {
-                            OutlinedTextField(
-                                value = newTime,
-                                onValueChange = { newTime = it },
-                                label = { Text("Tiempo (ej. 15-20 min)") }
-                            )
-                        },
-                        confirmButton = {
-                            Button(onClick = {
-                                onUpdateDish(item.copy(time = newTime))
-                                showEditTimeDialog = false
-                            }) {
-                                Text("Guardar")
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showEditTimeDialog = false }) {
-                                Text("Cancelar")
-                            }
-                        }
-                    )
                 }
             }
         }
@@ -868,12 +795,11 @@ fun StatsTabContent(orders: List<BusinessOrder>) {
 @Composable
 fun AddDishDialog(
     onDismiss: () -> Unit,
-    onAddDish: (name: String, price: String, description: String, time: String) -> Unit
+    onAddDish: (name: String, price: String, description: String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
-    var time by remember { mutableStateOf("") }
     val context = LocalContext.current
 
     AlertDialog(
@@ -905,13 +831,6 @@ fun AddDishDialog(
                     label = { Text("Descripción") },
                     modifier = Modifier.fillMaxWidth()
                 )
-                OutlinedTextField(
-                    value = time,
-                    onValueChange = { time = it },
-                    label = { Text("Tiempo estimado (ej: 10-15 min)") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
             }
         },
         confirmButton = {
@@ -927,7 +846,7 @@ fun AddDishDialog(
                         Toast.makeText(context, "Ingresa un precio válido (ej: 120.00)", Toast.LENGTH_SHORT).show()
                     } else {
                         val formattedPrice = "$${String.format(Locale.getDefault(), "%.2f", numericPrice)}"
-                        onAddDish(cleanName, formattedPrice, description.trim(), time.trim())
+                        onAddDish(cleanName, formattedPrice, description.trim())
                     }
                 }
             ) {
@@ -1014,6 +933,15 @@ fun BusinessSettingsTabContent(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                        Icon(Icons.Default.Schedule, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "Horario / Preparación: ${time.ifEmpty { "15-25 min" }}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         }
@@ -1055,6 +983,17 @@ fun BusinessSettingsTabContent(
             onValueChange = { name = it },
             label = { Text("Nombre del Restaurante / Local") },
             leadingIcon = { Icon(Icons.Default.Store, contentDescription = null) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(12.dp)
+        )
+
+        OutlinedTextField(
+            value = time,
+            onValueChange = { time = it },
+            label = { Text("Horario de Atención / Tiempo estimado") },
+            placeholder = { Text("Ej: 15-25 min  o  8:00 AM - 6:00 PM") },
+            leadingIcon = { Icon(Icons.Default.Schedule, contentDescription = null) },
             singleLine = true,
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(12.dp)
