@@ -171,7 +171,9 @@ class FirestoreRepository {
                     mapaMenus[doc.id] = items
                 }
 
-                onSuccess(listaRestaurantes, mapaMenus)
+                // Filtrar restaurantes duplicados por nombre
+                val deduplicatedRestaurantes = listaRestaurantes.distinctBy { it.name.lowercase().trim() }
+                onSuccess(deduplicatedRestaurantes, mapaMenus)
             }
             .addOnFailureListener { e -> onFailure(e) }
     }
@@ -208,21 +210,39 @@ class FirestoreRepository {
                     mapaMenus[doc.id] = items
                 }
 
-                onDataChanged(listaRestaurantes, mapaMenus)
+                // Filtrar restaurantes duplicados por nombre
+                val deduplicatedRestaurantes = listaRestaurantes.distinctBy { it.name.lowercase().trim() }
+                onDataChanged(deduplicatedRestaurantes, mapaMenus)
             }
     }
 
     fun agregarPlatilloAMenu(
         restaurantId: String,
+        restaurantName: String = "",
         item: MenuItem,
         onSuccess: () -> Unit,
         onFailure: (Exception) -> Unit
     ) {
-        val docRef = db.collection("restaurants").document(restaurantId)
-        docRef.get()
-            .addOnSuccessListener { doc ->
-                if (doc.exists()) {
-                    val rawMenu = (doc.get("menu") as? List<Map<String, Any>>)?.toMutableList() ?: mutableListOf()
+        db.collection("restaurants").get()
+            .addOnSuccessListener { snapshot ->
+                // Buscar si ya existe algún documento que coincida por ID o por Nombre
+                val matchingDoc = snapshot.documents.find { doc ->
+                    val docId = doc.id
+                    val fieldId = doc.getString("id") ?: ""
+                    val name = doc.getString("name") ?: ""
+
+                    docId.equals(restaurantId, ignoreCase = true) ||
+                    fieldId.equals(restaurantId, ignoreCase = true) ||
+                    (restaurantName.isNotBlank() && (
+                        name.equals(restaurantName, ignoreCase = true) ||
+                        name.contains(restaurantName, ignoreCase = true) ||
+                        restaurantName.contains(name, ignoreCase = true)
+                    ))
+                }
+
+                if (matchingDoc != null) {
+                    // Actualizar el documento EXISTENTE en Firestore
+                    val rawMenu = (matchingDoc.get("menu") as? List<Map<String, Any>>)?.toMutableList() ?: mutableListOf()
                     val newItemMap = mapOf(
                         "name" to item.name,
                         "price" to item.price,
@@ -230,11 +250,18 @@ class FirestoreRepository {
                     )
                     rawMenu.add(newItemMap)
 
-                    docRef.update("menu", rawMenu)
+                    matchingDoc.reference.update("menu", rawMenu)
                         .addOnSuccessListener { onSuccess() }
                         .addOnFailureListener { e -> onFailure(e) }
                 } else {
-                    // Si el restaurante aún no existe como documento, crearlo
+                    // Si el restaurante aún no existe como documento, crearlo con el nombre real del negocio
+                    val docKey = restaurantId.ifEmpty { "01" }
+                    val finalName = if (restaurantName.isNotBlank() && !restaurantName.startsWith("Local ")) {
+                        restaurantName
+                    } else {
+                        "Restaurante $docKey"
+                    }
+
                     val initialMenu = listOf(
                         mapOf(
                             "name" to item.name,
@@ -243,14 +270,14 @@ class FirestoreRepository {
                         )
                     )
                     val data = mapOf(
-                        "id" to restaurantId,
-                        "name" to "Local $restaurantId",
+                        "id" to docKey,
+                        "name" to finalName,
                         "rating" to "4.5",
                         "time" to "15-25 min",
                         "imageUrl" to "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=500",
                         "menu" to initialMenu
                     )
-                    docRef.set(data)
+                    db.collection("restaurants").document(docKey).set(data)
                         .addOnSuccessListener { onSuccess() }
                         .addOnFailureListener { e -> onFailure(e) }
                 }

@@ -262,6 +262,7 @@ fun BusinessHomeScreen(
                 // Guardar en Firestore (se refrescará en tiempo real vía SnapshotListener)
                 repository.agregarPlatilloAMenu(
                     restaurantId = targetRestId,
+                    restaurantName = businessName,
                     item = newItem,
                     onSuccess = {
                         Toast.makeText(context, "Platillo '$name' publicado en tiempo real", Toast.LENGTH_SHORT).show()
