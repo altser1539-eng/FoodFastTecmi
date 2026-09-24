@@ -713,9 +713,34 @@ fun RestaurantList(
     restaurants: List<Restaurant>,
     onRestaurantClick: (String) -> Unit
 ) {
-    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        restaurants.forEach { restaurant ->
-            RestaurantCard(restaurant = restaurant, onClick = onRestaurantClick)
+    if (restaurants.isEmpty()) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = "No hay restaurantes registrados en la base de datos.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "El administrador debe registrar un nuevo negocio.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+    } else {
+        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+            restaurants.forEach { restaurant ->
+                RestaurantCard(restaurant = restaurant, onClick = onRestaurantClick)
+            }
         }
     }
 }

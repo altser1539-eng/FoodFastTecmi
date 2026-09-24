@@ -8,8 +8,6 @@ import com.example.foodfast.data.FirestoreRepository
 import com.example.foodfast.data.MenuItem
 import com.example.foodfast.data.Restaurant
 import com.example.foodfast.data.StudentOrder
-import com.example.foodfast.data.restaurantMenus
-import com.example.foodfast.data.sampleRestaurants
 import com.example.foodfast.ui.screens.OrderStatus
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -34,21 +32,13 @@ class CartViewModel : ViewModel() {
     val ordersHistory = mutableStateListOf<StudentOrder>()
 
     init {
-        // Inicializar con datos locales por defecto
-        restaurantsList.addAll(sampleRestaurants)
-        menusMap.putAll(restaurantMenus)
-
-        // Escuchar restaurantes y menús desde Firestore en tiempo real
+        // Escuchar restaurantes y menús exclusivamente desde Firestore en tiempo real
         repository.escucharRestaurantesYMenus { dbRestaurants, dbMenus ->
-            if (dbRestaurants.isNotEmpty()) {
-                val existingIds = dbRestaurants.map { it.id }.toSet()
-                val mergedList = dbRestaurants + sampleRestaurants.filter { it.id !in existingIds }
-                restaurantsList.clear()
-                restaurantsList.addAll(mergedList)
-            }
-            if (dbMenus.isNotEmpty()) {
-                menusMap.putAll(dbMenus)
-            }
+            restaurantsList.clear()
+            restaurantsList.addAll(dbRestaurants)
+
+            menusMap.clear()
+            menusMap.putAll(dbMenus)
         }
 
         // Escuchar cambios de pedidos en Firestore en tiempo real

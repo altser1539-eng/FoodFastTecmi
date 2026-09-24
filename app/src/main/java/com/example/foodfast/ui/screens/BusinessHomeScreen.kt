@@ -114,18 +114,9 @@ fun BusinessHomeScreen(
     LaunchedEffect(businessId) {
         repository.escucharRestaurantesYMenus { _, dbMenus ->
             val myMenu = dbMenus[businessId]
+            menuList.clear()
             if (!myMenu.isNullOrEmpty()) {
-                menuList.clear()
                 menuList.addAll(myMenu)
-            } else if (menuList.isEmpty()) {
-                // Menú por defecto si Firestore está vacío para este ID
-                menuList.addAll(
-                    listOf(
-                        MenuItem("Pizza Margarita", "$120.00", "Tomate, mozzarella y albahaca fresca."),
-                        MenuItem("Pizza Pepperoni", "$140.00", "Pepperoni clásico con mozzarella."),
-                        MenuItem("Calzone", "$135.00", "Relleno de jamón y queso.")
-                    )
-                )
             }
         }
     }
@@ -614,56 +605,66 @@ fun BusinessScanQRDialog(
 
 @Composable
 fun MenuTabContent(menuList: List<MenuItem>) {
-    LazyColumn(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        items(menuList) { item ->
-            var isAvailable by remember { mutableStateOf(true) }
+    if (menuList.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = "No hay platillos en el menú de este negocio.\nAgrega uno presionado el botón (+).",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            items(menuList) { item ->
+                var isAvailable by remember { mutableStateOf(true) }
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = item.name,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = item.description,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
-                        )
-                        Text(
-                            text = item.price,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = item.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = item.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+                            Text(
+                                text = item.price,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
 
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = if (isAvailable) "Disponible" else "Agotado",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = if (isAvailable) Color(0xFF2E7D32) else Color.Red
-                        )
-                        Switch(
-                            checked = isAvailable,
-                            onCheckedChange = { isAvailable = it }
-                        )
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(
+                                text = if (isAvailable) "Disponible" else "Agotado",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (isAvailable) Color(0xFF2E7D32) else Color.Red
+                            )
+                            Switch(
+                                checked = isAvailable,
+                                onCheckedChange = { isAvailable = it }
+                            )
+                        }
                     }
                 }
             }

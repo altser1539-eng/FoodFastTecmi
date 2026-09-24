@@ -20,8 +20,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.foodfast.data.MenuItem
-import com.example.foodfast.data.restaurantMenus
-import com.example.foodfast.data.sampleRestaurants
 import com.example.foodfast.ui.viewmodel.CartViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,8 +31,8 @@ fun MenuScreen(
     onBack: () -> Unit,
     onViewCart: () -> Unit
 ) {
-    val restaurant = viewModel.restaurantsList.find { it.id == restaurantId } ?: sampleRestaurants.find { it.id == restaurantId }
-    val menu = viewModel.menusMap[restaurantId] ?: restaurantMenus[restaurantId] ?: emptyList()
+    val restaurant = viewModel.restaurantsList.find { it.id == restaurantId }
+    val menu = viewModel.menusMap[restaurantId] ?: emptyList()
     val context = LocalContext.current
 
     Scaffold(
@@ -89,22 +87,39 @@ fun MenuScreen(
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            items(menu) { item ->
-                val isHighlighted = item.name.equals(highlightedDish, ignoreCase = true)
-                val quantity = viewModel.cartItems[item.name]?.quantity ?: 0
-                
-                MenuItemCard(
-                    item = item, 
-                    isHighlighted = isHighlighted,
-                    quantity = quantity,
-                    onAdd = {
-                        val success = viewModel.addToCart(restaurantId, item)
-                        if (!success) {
-                            Toast.makeText(context, "No puedes mezclar restaurantes. Vacía tu pedido actual.", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    onRemove = { viewModel.removeFromCart(item) }
-                )
+            if (menu.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = "Este restaurante aún no tiene platillos registrados en la base de datos.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            } else {
+                items(menu) { item ->
+                    val isHighlighted = item.name.equals(highlightedDish, ignoreCase = true)
+                    val quantity = viewModel.cartItems[item.name]?.quantity ?: 0
+                    
+                    MenuItemCard(
+                        item = item, 
+                        isHighlighted = isHighlighted,
+                        quantity = quantity,
+                        onAdd = {
+                            val success = viewModel.addToCart(restaurantId, item)
+                            if (!success) {
+                                Toast.makeText(context, "No puedes mezclar restaurantes. Vacía tu pedido actual.", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        onRemove = { viewModel.removeFromCart(item) }
+                    )
+                }
             }
         }
     }
