@@ -92,7 +92,7 @@ fun PaymentScreen(
 
             OutlinedTextField(
                 value = cardNumber,
-                onValueChange = { if (it.length <= 16) cardNumber = it },
+                onValueChange = { input -> if (input.length <= 16 && input.all { it.isDigit() }) cardNumber = input },
                 label = { Text("Número de Tarjeta (16 dígitos)") },
                 leadingIcon = { Icon(Icons.Default.CreditCard, contentDescription = null) },
                 modifier = Modifier.fillMaxWidth(),
@@ -111,7 +111,7 @@ fun PaymentScreen(
             Row(modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
                     value = expiryDate,
-                    onValueChange = { if (it.length <= 5) expiryDate = it },
+                    onValueChange = { input -> if (input.length <= 5 && input.all { it.isDigit() || it == '/' }) expiryDate = input },
                     label = { Text("MM/AA") },
                     modifier = Modifier.weight(1f),
                     isError = isExpiryError,
@@ -129,7 +129,7 @@ fun PaymentScreen(
 
                 OutlinedTextField(
                     value = cvv,
-                    onValueChange = { if (it.length <= 3) cvv = it },
+                    onValueChange = { input -> if (input.length <= 3 && input.all { it.isDigit() }) cvv = input },
                     label = { Text("CVV") },
                     modifier = Modifier.weight(1f),
                     isError = isCvvError,

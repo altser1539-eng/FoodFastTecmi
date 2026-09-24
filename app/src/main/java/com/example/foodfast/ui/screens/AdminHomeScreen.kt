@@ -395,6 +395,7 @@ fun AddUserDialog(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
+    val context = LocalContext.current
 
     // Campos generales para Estudiante / Profesor / Admin
     var nombreCompleto by remember { mutableStateOf("") }
@@ -568,7 +569,9 @@ fun AddUserDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (username.isNotBlank() && password.isNotBlank()) {
+                    if (username.isBlank() || password.isBlank()) {
+                        Toast.makeText(context, "Por favor, ingresa el usuario y la contraseña", Toast.LENGTH_SHORT).show()
+                    } else {
                         val finalNombre = if (selectedRole == UserRole.NEGOCIO) {
                             nombreNegocio.trim().ifEmpty { username.trim() }
                         } else {

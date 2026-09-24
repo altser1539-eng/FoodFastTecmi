@@ -255,8 +255,8 @@ fun BusinessHomeScreen(
     if (showAddDishDialog) {
         AddDishDialog(
             onDismiss = { showAddDishDialog = false },
-            onAddDish = { name, price, desc ->
-                val newItem = MenuItem(name, "$$price", desc)
+            onAddDish = { name, formattedPrice, desc ->
+                val newItem = MenuItem(name, formattedPrice, desc)
                 val targetRestId = matchedRestaurantId.ifEmpty { businessId }
 
                 // Guardar en Firestore (se refrescará en tiempo real vía SnapshotListener)
@@ -735,6 +735,7 @@ fun AddDishDialog(
     var name by remember { mutableStateOf("") }
     var price by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    val context = LocalContext.current
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -745,26 +746,42 @@ fun AddDishDialog(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("Nombre del Platillo") },
-                    singleLine = true
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = price,
-                    onValueChange = { price = it },
+                    onValueChange = { input ->
+                        if (input.all { it.isDigit() || it == '.' || it == '$' }) {
+                            price = input
+                        }
+                    },
                     label = { Text("Precio (ej: 120.00)") },
-                    singleLine = true
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("Descripción") }
+                    label = { Text("Descripción") },
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (name.isNotBlank() && price.isNotBlank()) {
-                        onAddDish(name, price, description)
+                    val cleanName = name.trim()
+                    val rawPrice = price.trim().replace("$", "")
+                    val numericPrice = rawPrice.toDoubleOrNull()
+
+                    if (cleanName.isBlank()) {
+                        Toast.makeText(context, "Ingresa el nombre del platillo", Toast.LENGTH_SHORT).show()
+                    } else if (numericPrice == null || numericPrice <= 0) {
+                        Toast.makeText(context, "Ingresa un precio válido (ej: 120.00)", Toast.LENGTH_SHORT).show()
+                    } else {
+                        val formattedPrice = "$${String.format(Locale.getDefault(), "%.2f", numericPrice)}"
+                        onAddDish(cleanName, formattedPrice, description.trim())
                     }
                 }
             ) {
