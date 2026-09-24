@@ -407,6 +407,55 @@ class FirestoreRepository {
             .addOnFailureListener { e -> onFailure(e) }
     }
 
+    fun actualizarPlatilloMenu(
+        restaurantId: String,
+        restaurantName: String = "",
+        originalItemName: String,
+        updatedItem: MenuItem,
+        onSuccess: () -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
+        db.collection("restaurants").get()
+            .addOnSuccessListener { snapshot ->
+                val matchingDoc = snapshot.documents.find { doc ->
+                    val docId = doc.id
+                    val fieldId = doc.getString("id") ?: ""
+                    val name = doc.getString("name") ?: ""
+
+                    docId.equals(restaurantId, ignoreCase = true) ||
+                    fieldId.equals(restaurantId, ignoreCase = true) ||
+                    (restaurantName.isNotBlank() && (
+                        name.equals(restaurantName, ignoreCase = true) ||
+                        name.contains(restaurantName, ignoreCase = true) ||
+                        restaurantName.contains(name, ignoreCase = true)
+                    ))
+                }
+
+                if (matchingDoc != null) {
+                    val rawMenu = (matchingDoc.get("menu") as? List<Map<String, Any>>)?.toMutableList() ?: mutableListOf()
+                    
+                    val itemIndex = rawMenu.indexOfFirst { it["name"] == originalItemName }
+                    if (itemIndex != -1) {
+                        rawMenu[itemIndex] = mapOf(
+                            "name" to updatedItem.name,
+                            "price" to updatedItem.price,
+                            "description" to updatedItem.description,
+                            "time" to updatedItem.time,
+                            "isAvailable" to updatedItem.isAvailable
+                        )
+                        matchingDoc.reference.update("menu", rawMenu)
+                            .addOnSuccessListener { onSuccess() }
+                            .addOnFailureListener { e -> onFailure(e) }
+                    } else {
+                        onFailure(Exception("Platillo no encontrado"))
+                    }
+                } else {
+                    onFailure(Exception("Restaurante no encontrado"))
+                }
+            }
+            .addOnFailureListener { e -> onFailure(e) }
+    }
+
     // ==========================================
     // 3. GESTIÓN DE PEDIDOS Y MONITOREO
     // ==========================================
