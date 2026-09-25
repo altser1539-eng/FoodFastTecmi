@@ -764,7 +764,14 @@ fun RestaurantCard(restaurant: Restaurant, onClick: (String) -> Unit) {
         ) {
             Box {
                 AsyncImage(
-                    model = restaurant.imageUrl,
+                    model = if (restaurant.imageUrl.startsWith("data:image")) {
+                        val base64String = restaurant.imageUrl.substringAfter("base64,")
+                        val imageBytes = android.util.Base64.decode(base64String, android.util.Base64.DEFAULT)
+                        val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                        bitmap
+                    } else {
+                        restaurant.imageUrl
+                    },
                     contentDescription = restaurant.name,
                     modifier = Modifier
                         .fillMaxWidth()

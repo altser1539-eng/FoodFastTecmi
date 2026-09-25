@@ -39,6 +39,15 @@ import com.example.foodfast.data.FirestoreRepository
 import com.example.foodfast.data.MenuItem
 import com.example.foodfast.data.User
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 
 enum class OrderStatus(val label: String, val containerColor: Color, val contentColor: Color) {
     PENDIENTE("Pendiente", Color(0xFFFFF3CD), Color(0xFF856404)),
@@ -637,30 +646,28 @@ fun BusinessScanQRDialog(
                     onValueChange = {
                         qrInput = it
                         if (errorMessage != null) errorMessage = null
+                        
+                        val trimmed = it.trim()
+                        if (trimmed.contains(order.id, ignoreCase = true) ||
+                            trimmed.startsWith("FOODFAST:${order.id}", ignoreCase = true)
+                        ) {
+                            validateAndProcess(it)
+                        }
                     },
-                    label = { Text("Código escaneado") },
-                    placeholder = { Text("Ej: FOODFAST:${order.id}") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    trailingIcon = {
-                        IconButton(onClick = { validateAndProcess(qrInput) }) {
-                            Icon(Icons.Default.CheckCircle, contentDescription = "Validar")
-                        }
-                    }
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                        imeAction = androidx.compose.ui.text.input.ImeAction.Done
+                    ),
+                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                        onDone = { validateAndProcess(qrInput) }
+                    )
                 )
             }
         },
         confirmButton = {
-            Button(
-                onClick = { validateAndProcess(qrInput) },
-                modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-            ) {
-                Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(6.dp))
-                Text("Validar Código y Entregar", fontWeight = FontWeight.Bold)
-            }
+            // Botón de confirmar eliminado, la validación es automática al escanear
         },
         dismissButton = {
             TextButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
@@ -954,6 +961,28 @@ fun BusinessSettingsTabContent(
     var isBusinessOpen by remember(isOpen) { mutableStateOf(isOpen) }
 
     val scrollState = rememberScrollState()
+    var selectedImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    
+    val galleryLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            selectedImageUri = uri
+        }
+    }
+
+    if (selectedImageUri != null) {
+        ImageCropperDialog(
+            uri = selectedImageUri!!,
+            onConfirm = { base64Url ->
+                imageUrl = base64Url
+                selectedImageUri = null
+            },
+            onCancel = {
+                selectedImageUri = null
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -976,20 +1005,45 @@ fun BusinessSettingsTabContent(
 
         // Tarjeta de Vista Previa de Portada
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { galleryLauncher.launch("image/*") },
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
         ) {
             Column {
                 Box {
                     AsyncImage(
-                        model = imageUrl.ifEmpty { "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=500" },
+                        model = if (imageUrl.startsWith("data:image")) {
+                            val base64String = imageUrl.substringAfter("base64,")
+                            val imageBytes = android.util.Base64.decode(base64String, android.util.Base64.DEFAULT)
+                            val bitmap = android.graphics.BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
+                            bitmap
+                        } else {
+                            imageUrl.ifEmpty { "https://images.unsplash.com/photo-1513104890138-7c749659a591?q=80&w=500" }
+                        },
                         contentDescription = "Vista Previa de Imagen",
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(160.dp),
                         contentScale = ContentScale.Crop
                     )
+                    
+                    Surface(
+                        color = Color.Black.copy(alpha = 0.6f),
+                        shape = androidx.compose.foundation.shape.CircleShape,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(56.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = "Cambiar Portada",
+                            tint = Color.White,
+                            modifier = Modifier.padding(14.dp)
+                        )
+                    }
+
                     Surface(
                         color = if (isBusinessOpen) Color(0xFF2E7D32) else Color(0xFFC62828),
                         shape = RoundedCornerShape(8.dp),
@@ -1058,28 +1112,6 @@ fun BusinessSettingsTabContent(
             shape = RoundedCornerShape(12.dp)
         )
 
-        val galleryLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
-            contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
-        ) { uri ->
-            if (uri != null) {
-                imageUrl = uri.toString()
-            }
-        }
-
-        OutlinedTextField(
-            value = imageUrl,
-            onValueChange = { imageUrl = it },
-            label = { Text("Enlace de Imagen o Toca el ícono 👉") },
-            leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
-            trailingIcon = {
-                IconButton(onClick = { galleryLauncher.launch("image/*") }) {
-                    Icon(Icons.Default.Add, contentDescription = "Abrir Galería")
-                }
-            },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        )
-
         Spacer(modifier = Modifier.height(8.dp))
 
         Button(
@@ -1098,4 +1130,155 @@ fun BusinessSettingsTabContent(
 
         Spacer(modifier = Modifier.height(16.dp))
     }
+}
+
+@Composable
+fun ImageCropperDialog(
+    uri: android.net.Uri,
+    onConfirm: (String) -> Unit,
+    onCancel: () -> Unit
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var bitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
+    
+    LaunchedEffect(uri) {
+        withContext(Dispatchers.IO) {
+            try {
+                val srcBmp = if (android.os.Build.VERSION.SDK_INT >= 28) {
+                    val source = android.graphics.ImageDecoder.createSource(context.contentResolver, uri)
+                    android.graphics.ImageDecoder.decodeBitmap(source) { decoder, _, _ -> 
+                        decoder.isMutableRequired = true
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    android.provider.MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
+                }
+                val maxDim = 1024f
+                val scale = if (srcBmp.width > maxDim || srcBmp.height > maxDim) {
+                    maxOf(srcBmp.width / maxDim, srcBmp.height / maxDim)
+                } else 1f
+                bitmap = android.graphics.Bitmap.createScaledBitmap(srcBmp, (srcBmp.width / scale).toInt(), (srcBmp.height / scale).toInt(), true)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    if (bitmap == null) {
+        AlertDialog(
+            onDismissRequest = onCancel,
+            confirmButton = {},
+            title = { Text("Cargando imagen...") },
+            text = { Box(modifier=Modifier.fillMaxWidth(), contentAlignment=Alignment.Center) { CircularProgressIndicator() } }
+        )
+        return
+    }
+
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offsetX by remember { mutableFloatStateOf(0f) }
+    var offsetY by remember { mutableFloatStateOf(0f) }
+    var boxWidthPx by remember { mutableFloatStateOf(1f) }
+
+    AlertDialog(
+        onDismissRequest = onCancel,
+        title = { Text("Acomodar Portada", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Desliza y usa 2 dedos para hacer zoom y centrar tu imagen.", style = MaterialTheme.typography.bodySmall)
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(16f / 9f)
+                        .background(Color.DarkGray)
+                        .clipToBounds()
+                        .onSizeChanged { size ->
+                            boxWidthPx = size.width.toFloat()
+                        }
+                        .pointerInput(Unit) {
+                            detectTransformGestures { _, pan, zoom, _ ->
+                                scale = (scale * zoom).coerceIn(0.5f, 5f)
+                                offsetX += pan.x
+                                offsetY += pan.y
+                            }
+                        }
+                ) {
+                    androidx.compose.foundation.Image(
+                        bitmap = bitmap!!.asImageBitmap(),
+                        contentDescription = "Crop",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer(
+                                scaleX = scale,
+                                scaleY = scale,
+                                translationX = offsetX,
+                                translationY = offsetY
+                            )
+                    )
+                    Box(modifier = Modifier.fillMaxSize().border(2.dp, MaterialTheme.colorScheme.primary))
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                coroutineScope.launch(Dispatchers.IO) {
+                    try {
+                        val outW = 800
+                        val outH = 450
+                        val output = android.graphics.Bitmap.createBitmap(outW, outH, android.graphics.Bitmap.Config.ARGB_8888)
+                        val canvas = android.graphics.Canvas(output)
+                        canvas.drawColor(android.graphics.Color.DKGRAY)
+                        
+                        val imgW = bitmap!!.width.toFloat()
+                        val imgH = bitmap!!.height.toFloat()
+                        val boxAspect = 16f / 9f
+                        val imgAspect = imgW / imgH
+                        
+                        val drawW: Float
+                        val drawH: Float
+                        if (imgAspect > boxAspect) {
+                            drawW = outW.toFloat()
+                            drawH = outW / imgAspect
+                        } else {
+                            drawH = outH.toFloat()
+                            drawW = outH * imgAspect
+                        }
+                        
+                        val dx = (outW - drawW) / 2f
+                        val dy = (outH - drawH) / 2f
+                        
+                        val matrix = android.graphics.Matrix()
+                        matrix.postScale(drawW / imgW, drawH / imgH)
+                        matrix.postTranslate(dx, dy)
+                        
+                        val ratio = outW / boxWidthPx
+                        matrix.postTranslate(offsetX * ratio, offsetY * ratio)
+                        matrix.postScale(scale, scale, outW / 2f, outH / 2f)
+                        
+                        canvas.drawBitmap(bitmap!!, matrix, android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG))
+                        
+                        val stream = java.io.ByteArrayOutputStream()
+                        output.compress(android.graphics.Bitmap.CompressFormat.JPEG, 70, stream)
+                        val bytes = stream.toByteArray()
+                        val base64 = android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)
+                        val finalUrl = "data:image/jpeg;base64,$base64"
+                        
+                        withContext(Dispatchers.Main) {
+                            onConfirm(finalUrl)
+                        }
+                    } catch(e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
+            }) {
+                Text("Confirmar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) { Text("Cancelar") }
+        }
+    )
 }
