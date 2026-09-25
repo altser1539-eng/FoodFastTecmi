@@ -691,7 +691,9 @@ fun MenuTabContent(
             )
         }
     } else {
-        val sortedMenu = menuList.sortedByDescending { it.isAvailable }
+        // En la vista del negocio, mostramos los platillos en el orden en que se agregaron (sin ordenarlos por disponibilidad)
+        // para que permanezcan estáticos al apagarlos o prenderlos.
+        val sortedMenu = menuList
 
         LazyColumn(
             modifier = Modifier
