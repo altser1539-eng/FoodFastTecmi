@@ -14,11 +14,18 @@ enum class UserRole(val displayName: String) {
     }
 }
 
+data class SavedCard(
+    val cardNumber: String = "",
+    val expiryDate: String = "",
+    val cvv: String = "" // In a real app we shouldn't save CVV, but for testing it's fine
+)
+
 data class User(
     val id: String = "",
     val username: String = "",
     val email: String = "",
     val role: UserRole = UserRole.ESTUDIANTE,
     val nombreCompleto: String = "",
-    val identificador: String = "" // Matrícula para Estudiante, Nómina para Profesor, Registro para Negocio
+    val identificador: String = "", // Matrícula para Estudiante, Nómina para Profesor, Registro para Negocio
+    val savedCards: List<SavedCard> = emptyList()
 )

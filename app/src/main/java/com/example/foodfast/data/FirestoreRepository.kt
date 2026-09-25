@@ -24,7 +24,8 @@ class FirestoreRepository {
             "password" to passwordHash,
             "role" to user.role.name,
             "nombreCompleto" to user.nombreCompleto,
-            "identificador" to user.identificador
+            "identificador" to user.identificador,
+            "savedCards" to emptyList<Map<String, String>>()
         )
 
         db.collection("users")
@@ -48,13 +49,23 @@ class FirestoreRepository {
                     if (storedPassword == passwordInput) {
                         val roleString = document.getString("role")
                         val role = UserRole.fromString(roleString)
+                        @Suppress("UNCHECKED_CAST")
+                        val rawCards = document.get("savedCards") as? List<Map<String, String>> ?: emptyList()
+                        val savedCardsList = rawCards.map {
+                            SavedCard(
+                                cardNumber = it["cardNumber"] ?: "",
+                                expiryDate = it["expiryDate"] ?: "",
+                                cvv = it["cvv"] ?: ""
+                            )
+                        }
                         val user = User(
                             id = document.getString("id") ?: document.id,
                             username = document.getString("username") ?: username,
                             email = document.getString("email") ?: "",
                             role = role,
                             nombreCompleto = document.getString("nombreCompleto") ?: "",
-                            identificador = document.getString("identificador") ?: ""
+                            identificador = document.getString("identificador") ?: "",
+                            savedCards = savedCardsList
                         )
                         onSuccess(user)
                     } else {
@@ -79,13 +90,23 @@ class FirestoreRepository {
                 val listaUsuarios = snapshot.documents.mapNotNull { doc ->
                     val roleString = doc.getString("role")
                     val role = UserRole.fromString(roleString)
+                    @Suppress("UNCHECKED_CAST")
+                    val rawCards = doc.get("savedCards") as? List<Map<String, String>> ?: emptyList()
+                    val savedCardsList = rawCards.map {
+                        SavedCard(
+                            cardNumber = it["cardNumber"] ?: "",
+                            expiryDate = it["expiryDate"] ?: "",
+                            cvv = it["cvv"] ?: ""
+                        )
+                    }
                     User(
                         id = doc.getString("id") ?: doc.id,
                         username = doc.getString("username") ?: doc.id,
                         email = doc.getString("email") ?: "",
                         role = role,
                         nombreCompleto = doc.getString("nombreCompleto") ?: "",
-                        identificador = doc.getString("identificador") ?: ""
+                        identificador = doc.getString("identificador") ?: "",
+                        savedCards = savedCardsList
                     )
                 }
                 onSuccess(listaUsuarios)
@@ -103,6 +124,60 @@ class FirestoreRepository {
             .delete()
             .addOnSuccessListener { onSuccess() }
             .addOnFailureListener { e -> onFailure(e) }
+    }
+
+    fun agregarTarjeta(
+        username: String,
+        card: SavedCard,
+        onSuccess: () -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
+        val userDocRef = db.collection("users").document(username.lowercase())
+        userDocRef.get().addOnSuccessListener { document ->
+            if (document.exists()) {
+                @Suppress("UNCHECKED_CAST")
+                val rawCards = (document.get("savedCards") as? List<Map<String, String>>)?.toMutableList() ?: mutableListOf()
+                
+                if (rawCards.none { it["cardNumber"] == card.cardNumber }) {
+                    rawCards.add(mapOf(
+                        "cardNumber" to card.cardNumber,
+                        "expiryDate" to card.expiryDate,
+                        "cvv" to card.cvv
+                    ))
+                    userDocRef.update("savedCards", rawCards)
+                        .addOnSuccessListener { onSuccess() }
+                        .addOnFailureListener { onFailure(it) }
+                } else {
+                    onSuccess()
+                }
+            } else {
+                onFailure(Exception("Usuario no encontrado"))
+            }
+        }.addOnFailureListener { onFailure(it) }
+    }
+
+    fun obtenerTarjetasGuardadas(
+        username: String,
+        onSuccess: (List<SavedCard>) -> Unit,
+        onFailure: (Exception) -> Unit
+    ) {
+        val userDocRef = db.collection("users").document(username.lowercase())
+        userDocRef.get().addOnSuccessListener { document ->
+            if (document.exists()) {
+                @Suppress("UNCHECKED_CAST")
+                val rawCards = document.get("savedCards") as? List<Map<String, String>> ?: emptyList()
+                val savedCardsList = rawCards.map {
+                    SavedCard(
+                        cardNumber = it["cardNumber"] ?: "",
+                        expiryDate = it["expiryDate"] ?: "",
+                        cvv = it["cvv"] ?: ""
+                    )
+                }
+                onSuccess(savedCardsList)
+            } else {
+                onSuccess(emptyList())
+            }
+        }.addOnFailureListener { onFailure(it) }
     }
 
     // ==========================================
